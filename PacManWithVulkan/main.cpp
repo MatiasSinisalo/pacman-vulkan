@@ -61,13 +61,14 @@ int main() {
 	
 	//We no longer need to specifyi that we need to use the validation layers
 	//Just use the external vulkan configurator exe provided by Vulkan SDK
+	//to my understanding layers have been deprecated?
 	instanceCreateInfo.enabledLayerCount = 0;
 	instanceCreateInfo.ppEnabledLayerNames = nullptr;
 
 	CHECK_VK_ERROR(vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
 
 	//Picking physical Device
-	//WARNING: this way of picking a gpu may not work on other machines
+	//WARNING: this way of picking a gpu may not work on other devices
 	//TODO: let the user pick their GPU at the start of the application?
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	uint32_t physicalDeviceCount = 0;
@@ -84,6 +85,41 @@ int main() {
 			}
 	}
 
+	//Choosing Queues
+	//WARNING: this way of choosing queues may not work on other devices
+	VkDeviceQueueCreateInfo queueCreateInfo = {};
+	uint32_t queueCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, nullptr);
+	std::vector<VkQueueFamilyProperties> queueFamilyInformations(queueCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, queueFamilyInformations.data());
+	for (unsigned int i = 0; i < queueCount; i++) {
+		if (queueFamilyInformations[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+			queueCreateInfo.queueFamilyIndex = i;
+			break;
+		}
+	}
+	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	queueCreateInfo.pNext = NULL;
+	queueCreateInfo.flags = 0;
+	float queuePriories[1] = { 0.0f };
+	queueCreateInfo.pQueuePriorities = queuePriories;
+	queueCreateInfo.queueCount = 1;
+	
+	//Creating the logical device
+	VkDeviceCreateInfo logicalDeviceCreateInfo = {};
+	logicalDeviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	logicalDeviceCreateInfo.pNext = NULL;
+	logicalDeviceCreateInfo.flags = 0;
+	logicalDeviceCreateInfo.queueCreateInfoCount = 1;
+	logicalDeviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+	logicalDeviceCreateInfo.enabledLayerCount = 0;
+	logicalDeviceCreateInfo.ppEnabledLayerNames = NULL;
+	logicalDeviceCreateInfo.enabledExtensionCount = 0;
+	logicalDeviceCreateInfo.ppEnabledExtensionNames = NULL;
+	logicalDeviceCreateInfo.pEnabledFeatures = NULL;
+
+	VkDevice logicalDevice;
+	CHECK_VK_ERROR(vkCreateDevice(physicalDevice, &logicalDeviceCreateInfo, NULL, &logicalDevice));
 
 
 
@@ -91,6 +127,8 @@ int main() {
 	{
 		glfwPollEvents();
 	}
+
+	vkDestroyDevice(logicalDevice, nullptr);
 
 	vkDestroyInstance(instance, nullptr);
 
