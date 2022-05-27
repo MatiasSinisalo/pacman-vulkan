@@ -10,6 +10,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <vector>
+#include <algorithm> 
 /*
 Sources:
 huge credits go to the totorial from: https://vulkan-tutorial.com/
@@ -36,8 +37,6 @@ int main() {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-	
-
 	GLFWwindow* window = glfwCreateWindow(640, 480, "My Title", NULL, NULL);
 
 	VkInstance instance = {};
@@ -57,7 +56,7 @@ int main() {
 	instanceCreateInfo.flags = 0;
 	instanceCreateInfo.pApplicationInfo = &vulkanAppInfo;
 
-	//Extensions
+	//instance Extensions
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions;
 	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
@@ -73,7 +72,6 @@ int main() {
 
 	CHECK_VK_ERROR(vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
 
-
 	//Creating a surface
 	VkSurfaceKHR surface = {};
 	VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfo = {};
@@ -82,6 +80,8 @@ int main() {
 	win32SurfaceCreateInfo.hwnd = glfwGetWin32Window(window);
 	win32SurfaceCreateInfo.hinstance = GetModuleHandle(nullptr);
 	vkCreateWin32SurfaceKHR(instance, &win32SurfaceCreateInfo, nullptr, &surface);
+
+	
 
 
 	//Picking physical Device
@@ -132,11 +132,10 @@ int main() {
 			presentQueueCreateInfo.queueFamilyIndex = i;
 		}
 	}
-
+	float queuePriories[1] = { 1.0f };
 	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	graphicsQueueCreateInfo.pNext = NULL;
 	graphicsQueueCreateInfo.flags = 0;
-	float queuePriories[1] = { 1.0f };
 	graphicsQueueCreateInfo.pQueuePriorities = queuePriories;
 	graphicsQueueCreateInfo.queueCount = 1;
 
@@ -149,7 +148,12 @@ int main() {
 	VkDeviceQueueCreateInfo queueInfos[2] = { graphicsQueueCreateInfo, presentQueueCreateInfo};
 
 
+
 	//Creating the logical device
+
+	//Extensions for logical device
+	const std::vector<const char*> logicalDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+	
 	VkDeviceCreateInfo logicalDeviceCreateInfo = {};
 	logicalDeviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	logicalDeviceCreateInfo.pNext = NULL;
@@ -158,8 +162,8 @@ int main() {
 	logicalDeviceCreateInfo.pQueueCreateInfos = queueInfos;
 	logicalDeviceCreateInfo.enabledLayerCount = 0;
 	logicalDeviceCreateInfo.ppEnabledLayerNames = NULL;
-	logicalDeviceCreateInfo.enabledExtensionCount = 0;
-	logicalDeviceCreateInfo.ppEnabledExtensionNames = NULL;
+	logicalDeviceCreateInfo.enabledExtensionCount = static_cast<uint32_t>(logicalDeviceExtensions.size());
+	logicalDeviceCreateInfo.ppEnabledExtensionNames = logicalDeviceExtensions.data();
 	logicalDeviceCreateInfo.pEnabledFeatures = NULL;
 
 	VkDevice logicalDevice;
@@ -167,6 +171,64 @@ int main() {
 	vkGetDeviceQueue(logicalDevice, graphicsQueueIndex, 0, &graphicsQueue);
 	vkGetDeviceQueue(logicalDevice, presentQueueIndex, 0, &presentQueue);
 	
+	//Create a swapchain
+	VkSurfaceCapabilitiesKHR pSurfaceCapabilities;
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &pSurfaceCapabilities);
+	
+	uint32_t surfaceFormatCount;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr);
+	std::vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats.data());
+
+	uint32_t presentModeCount;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
+	std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes.data());
+
+
+	int swapChainWidth;
+	int swapChainHeight;
+	glfwGetFramebufferSize(window, &swapChainWidth, &swapChainHeight);
+	//WARNING: it may be possible that the width and height exeed the 
+	VkExtent2D swapchainDimensions = {};
+	swapchainDimensions.width = std::clamp(swapchainDimensions.width, pSurfaceCapabilities.minImageExtent.width, pSurfaceCapabilities.maxImageExtent.width);
+	swapchainDimensions.height = std::clamp(swapchainDimensions.height, pSurfaceCapabilities.minImageExtent.height, pSurfaceCapabilities.maxImageExtent.height);
+
+
+	VkSwapchainCreateInfoKHR swapChainCreateInfo = {};
+	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapChainCreateInfo.pNext = NULL;
+	swapChainCreateInfo.flags = 0;
+	swapChainCreateInfo.surface = surface;
+	swapChainCreateInfo.minImageCount = pSurfaceCapabilities.minImageCount + 1;
+	swapChainCreateInfo.imageFormat = VK_FORMAT_B8G8R8A8_SRGB; //WARNING this is just a shortcut TODO: actually choose what image format we use
+	swapChainCreateInfo.imageColorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	swapChainCreateInfo.imageExtent = swapchainDimensions;
+	swapChainCreateInfo.imageArrayLayers = 1;
+	swapChainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	if (graphicsQueueIndex != presentQueueIndex) {
+		const uint32_t queueFamilyIndices[2] = { graphicsQueueIndex , presentQueueIndex };
+		swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		swapChainCreateInfo.queueFamilyIndexCount = 2;
+		swapChainCreateInfo.pQueueFamilyIndices = queueFamilyIndices;
+	}
+	else {
+		swapChainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		swapChainCreateInfo.queueFamilyIndexCount = 0;
+		swapChainCreateInfo.pQueueFamilyIndices = NULL;
+	}
+	swapChainCreateInfo.preTransform = pSurfaceCapabilities.currentTransform;
+	swapChainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapChainCreateInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; //We will have two frames in flight
+	swapChainCreateInfo.clipped = VK_TRUE;
+	swapChainCreateInfo.oldSwapchain = VK_NULL_HANDLE;
+
+
+	
+	VkSwapchainKHR swapChain = {};
+	CHECK_VK_ERROR(vkCreateSwapchainKHR(logicalDevice, &swapChainCreateInfo, nullptr, &swapChain));
+
+
 
 
 	while (!glfwWindowShouldClose(window))
@@ -177,7 +239,6 @@ int main() {
 	vkDestroyDevice(logicalDevice, nullptr);
 
 	vkDestroySurfaceKHR(instance, surface, nullptr);
-
 
 	vkDestroyInstance(instance, nullptr);
 
