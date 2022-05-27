@@ -1,8 +1,14 @@
-#include <vulkan/vulkan.h>
+
 
 #include <stdio.h>
 #include <iostream>
+
+#define VK_USE_PLATFORM_WIN32_KHR
+#include <vulkan/vulkan.h>
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 #include <vector>
 /*
 Sources:
@@ -67,6 +73,17 @@ int main() {
 
 	CHECK_VK_ERROR(vkCreateInstance(&instanceCreateInfo, nullptr, &instance));
 
+
+	//Creating a surface
+	VkSurfaceKHR surface = {};
+	VkWin32SurfaceCreateInfoKHR win32SurfaceCreateInfo = {};
+	win32SurfaceCreateInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+	win32SurfaceCreateInfo.pNext = NULL;
+	win32SurfaceCreateInfo.hwnd = glfwGetWin32Window(window);
+	win32SurfaceCreateInfo.hinstance = GetModuleHandle(nullptr);
+	vkCreateWin32SurfaceKHR(instance, &win32SurfaceCreateInfo, nullptr, &surface);
+
+
 	//Picking physical Device
 	//WARNING: this way of picking a gpu may not work on other devices
 	//TODO: let the user pick their GPU at the start of the application?
@@ -84,8 +101,12 @@ int main() {
 				physicalDevice = device;
 			}
 	}
+	
 
 	//Choosing Queues
+	VkQueue graphicsQueue = {};
+	uint32_t graphicsQueueIndex = 0;
+
 	//WARNING: this way of choosing queues may not work on other devices
 	VkDeviceQueueCreateInfo queueCreateInfo = {};
 	uint32_t queueCount = 0;
@@ -94,10 +115,12 @@ int main() {
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, queueFamilyInformations.data());
 	for (unsigned int i = 0; i < queueCount; i++) {
 		if (queueFamilyInformations[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+			graphicsQueueIndex = i;
 			queueCreateInfo.queueFamilyIndex = i;
 			break;
-		}
+		}		
 	}
+
 	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	queueCreateInfo.pNext = NULL;
 	queueCreateInfo.flags = 0;
@@ -120,7 +143,7 @@ int main() {
 
 	VkDevice logicalDevice;
 	CHECK_VK_ERROR(vkCreateDevice(physicalDevice, &logicalDeviceCreateInfo, NULL, &logicalDevice));
-
+	vkGetDeviceQueue(logicalDevice, graphicsQueueIndex, 0, &graphicsQueue);
 
 
 	while (!glfwWindowShouldClose(window))
@@ -129,6 +152,8 @@ int main() {
 	}
 
 	vkDestroyDevice(logicalDevice, nullptr);
+
+	vkDestroySurfaceKHR(instance, surface, nullptr);
 
 	vkDestroyInstance(instance, nullptr);
 
