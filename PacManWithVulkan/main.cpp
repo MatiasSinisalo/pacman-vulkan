@@ -105,36 +105,57 @@ int main() {
 
 	//Choosing Queues
 	VkQueue graphicsQueue = {};
-	uint32_t graphicsQueueIndex = 0;
+	uint32_t graphicsQueueIndex = -1;
+	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
+
+	VkQueue presentQueue = {};
+	uint32_t presentQueueIndex = -1;
+	VkDeviceQueueCreateInfo presentQueueCreateInfo = {};
 
 	//WARNING: this way of choosing queues may not work on other devices
-	VkDeviceQueueCreateInfo queueCreateInfo = {};
+	
 	uint32_t queueCount = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, nullptr);
 	std::vector<VkQueueFamilyProperties> queueFamilyInformations(queueCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, queueFamilyInformations.data());
+	
+	//TODO: make sure the queues are seperate, does it matter?
 	for (unsigned int i = 0; i < queueCount; i++) {
 		if (queueFamilyInformations[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			graphicsQueueIndex = i;
-			queueCreateInfo.queueFamilyIndex = i;
-			break;
-		}		
+			graphicsQueueCreateInfo.queueFamilyIndex = i;
+		}
+		VkBool32 thisQueueSupportsPresent = VK_FALSE;
+		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &thisQueueSupportsPresent);
+		if (thisQueueSupportsPresent == VK_TRUE){
+			presentQueueIndex = i;
+			presentQueueCreateInfo.queueFamilyIndex = i;
+		}
 	}
 
-	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.pNext = NULL;
-	queueCreateInfo.flags = 0;
-	float queuePriories[1] = { 0.0f };
-	queueCreateInfo.pQueuePriorities = queuePriories;
-	queueCreateInfo.queueCount = 1;
+	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	graphicsQueueCreateInfo.pNext = NULL;
+	graphicsQueueCreateInfo.flags = 0;
+	float queuePriories[1] = { 1.0f };
+	graphicsQueueCreateInfo.pQueuePriorities = queuePriories;
+	graphicsQueueCreateInfo.queueCount = 1;
+
+	presentQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	presentQueueCreateInfo.pNext = NULL;
+	presentQueueCreateInfo.flags = 0;
+	presentQueueCreateInfo.pQueuePriorities = queuePriories;
+	presentQueueCreateInfo.queueCount = 1;
 	
+	VkDeviceQueueCreateInfo queueInfos[2] = { graphicsQueueCreateInfo, presentQueueCreateInfo};
+
+
 	//Creating the logical device
 	VkDeviceCreateInfo logicalDeviceCreateInfo = {};
 	logicalDeviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	logicalDeviceCreateInfo.pNext = NULL;
 	logicalDeviceCreateInfo.flags = 0;
-	logicalDeviceCreateInfo.queueCreateInfoCount = 1;
-	logicalDeviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+	logicalDeviceCreateInfo.queueCreateInfoCount = 2;
+	logicalDeviceCreateInfo.pQueueCreateInfos = queueInfos;
 	logicalDeviceCreateInfo.enabledLayerCount = 0;
 	logicalDeviceCreateInfo.ppEnabledLayerNames = NULL;
 	logicalDeviceCreateInfo.enabledExtensionCount = 0;
@@ -144,6 +165,8 @@ int main() {
 	VkDevice logicalDevice;
 	CHECK_VK_ERROR(vkCreateDevice(physicalDevice, &logicalDeviceCreateInfo, NULL, &logicalDevice));
 	vkGetDeviceQueue(logicalDevice, graphicsQueueIndex, 0, &graphicsQueue);
+	vkGetDeviceQueue(logicalDevice, presentQueueIndex, 0, &presentQueue);
+	
 
 
 	while (!glfwWindowShouldClose(window))
@@ -154,6 +177,7 @@ int main() {
 	vkDestroyDevice(logicalDevice, nullptr);
 
 	vkDestroySurfaceKHR(instance, surface, nullptr);
+
 
 	vkDestroyInstance(instance, nullptr);
 
