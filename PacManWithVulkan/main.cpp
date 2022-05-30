@@ -81,9 +81,6 @@ int main() {
 	win32SurfaceCreateInfo.hinstance = GetModuleHandle(nullptr);
 	vkCreateWin32SurfaceKHR(instance, &win32SurfaceCreateInfo, nullptr, &surface);
 
-	
-
-
 	//Picking physical Device
 	//WARNING: this way of picking a gpu may not work on other devices
 	//TODO: let the user pick their GPU at the start of the application?
@@ -147,10 +144,7 @@ int main() {
 	
 	VkDeviceQueueCreateInfo queueInfos[2] = { graphicsQueueCreateInfo, presentQueueCreateInfo};
 
-
-
 	//Creating the logical device
-
 	//Extensions for logical device
 	const std::vector<const char*> logicalDeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	
@@ -261,12 +255,68 @@ int main() {
 	VkRenderPass renderPass = {};
 	CHECK_VK_ERROR(vkCreateRenderPass(logicalDevice, &renderPassCreateInfo, nullptr, &renderPass));
 
+	//Get the images of the swapchain
+	uint32_t swapChainImageCount;
+	vkGetSwapchainImagesKHR(logicalDevice, swapChain, &swapChainImageCount, nullptr);
+	std::vector<VkImage> swapChainImages(swapChainImageCount);
+	vkGetSwapchainImagesKHR(logicalDevice, swapChain, &swapChainImageCount, swapChainImages.data());
 
+	//Create views for the images
+	std::vector<VkImageView> swapChainImageViews(swapChainImageCount);
+	for (int i = 0; i < swapChainImageCount; i++) {
+		VkImageViewCreateInfo imageViewCreateInfo = {};
+		imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		imageViewCreateInfo.pNext = NULL;
+		imageViewCreateInfo.flags = 0;
+		imageViewCreateInfo.image = swapChainImages[i];
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		imageViewCreateInfo.format = VK_FORMAT_B8G8R8A8_SRGB;
+		imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		imageViewCreateInfo.subresourceRange;
+		imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+		imageViewCreateInfo.subresourceRange.levelCount = 1;
+		imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+		imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+		VkImageView imageView = {};
+		CHECK_VK_ERROR(vkCreateImageView(logicalDevice, &imageViewCreateInfo, nullptr, &swapChainImageViews[i]));
+	}
+	//Create a framebuffer for each image in the swapchain
+	std::vector<VkFramebuffer> swapChainFrameBuffers(swapChainImageCount);
+	
+	for (int i = 0; i < swapChainImageCount; i++) {
+		VkFramebufferCreateInfo frameBufferCreateInfo = {};
+		frameBufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		frameBufferCreateInfo.pNext = NULL;
+		frameBufferCreateInfo.flags = 0;
+		frameBufferCreateInfo.renderPass = renderPass;
+		frameBufferCreateInfo.attachmentCount = 1; //The number of vkimageviews
+		frameBufferCreateInfo.pAttachments = &swapChainImageViews[i]; // pointer to an array of the swapchains vkimageviews
+		frameBufferCreateInfo.width = 640;
+		frameBufferCreateInfo.height = 480;
+		frameBufferCreateInfo.layers = 1;
+
+		VkFramebuffer frameBuffer = {};
+		CHECK_VK_ERROR(vkCreateFramebuffer(logicalDevice, &frameBufferCreateInfo, nullptr, &swapChainFrameBuffers[i]));
+	}
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 	}
+
+	for (auto framebuffer : swapChainFrameBuffers) {
+		vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
+	}
+
+	for (auto imageView : swapChainImageViews) {
+		vkDestroyImageView(logicalDevice, imageView, nullptr);
+	}
+
 
 	vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
