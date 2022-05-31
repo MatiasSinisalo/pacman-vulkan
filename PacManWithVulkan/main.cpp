@@ -9,6 +9,13 @@
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
+
+
+
+#include "shader_vert.spv.h"
+#include "shader_frag.spv.h"
+
+
 #include <vector>
 #include <algorithm> 
 /*
@@ -27,6 +34,31 @@ c Multiline makros: https://www.geeksforgeeks.org/multiline-macros-in-c/?ref=lbp
 		throw std::runtime_error("failed to create instance!"); \
 	}\
 }
+
+VkPipelineShaderStageCreateInfo createShaderStage(VkDevice &logicalDevice, VkShaderStageFlagBits shaderStage, const uint32_t *shaderHeader, const uint32_t shaderHeaderSize, std::vector<VkShaderModule> *shaderModules) {
+	
+	VkShaderModuleCreateInfo shaderModuleCreateInfo = {};
+	shaderModuleCreateInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	shaderModuleCreateInfo.pNext = NULL;
+	shaderModuleCreateInfo.flags = 0;
+	shaderModuleCreateInfo.codeSize = shaderHeaderSize;
+	shaderModuleCreateInfo.pCode = shaderHeader;
+	VkShaderModule shaderModule = {};
+	CHECK_VK_ERROR(vkCreateShaderModule(logicalDevice, &shaderModuleCreateInfo, nullptr, &shaderModule));
+	shaderModules->push_back(shaderModule);
+
+	VkPipelineShaderStageCreateInfo shaderStageCreateInfo = {};
+	shaderStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	shaderStageCreateInfo.pNext = NULL;
+	shaderStageCreateInfo.flags = 0;
+	shaderStageCreateInfo.stage = shaderStage;
+	shaderStageCreateInfo.module = shaderModule;
+	shaderStageCreateInfo.pName = "main";
+	shaderStageCreateInfo.pSpecializationInfo = NULL;
+
+	return shaderStageCreateInfo;
+}
+
 
 int main() {
 	
@@ -231,11 +263,11 @@ int main() {
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-	VkAttachmentReference colorAttachmentRef{};
+	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0;
 	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-	VkSubpassDescription subpass{};
+	VkSubpassDescription subpass = {};
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.colorAttachmentCount = 1;
 	subpass.pColorAttachments = &colorAttachmentRef;
@@ -304,7 +336,6 @@ int main() {
 	}
 
 	//command pool
-
 	VkCommandPoolCreateInfo commandPoolCreateInfo;
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolCreateInfo.pNext = NULL;
@@ -325,12 +356,149 @@ int main() {
 	std::vector<VkCommandBuffer> commandBuffers(swapChainImageCount);
 	CHECK_VK_ERROR(vkAllocateCommandBuffers(logicalDevice, &commandBufferAllocateInfo, commandBuffers.data()));
 	
+	//create a graphics pipeline for our triangle
+
+	uint32_t graphicsPipelineStageCount = 2;
+	std::vector<VkShaderModule> shaderModules;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateinfos(graphicsPipelineStageCount);
+	shaderStageCreateinfos[0] = createShaderStage(logicalDevice, VK_SHADER_STAGE_VERTEX_BIT, shader_vert, sizeof(shader_vert), &shaderModules);
+	shaderStageCreateinfos[1] = createShaderStage(logicalDevice, VK_SHADER_STAGE_FRAGMENT_BIT, shader_frag, sizeof(shader_frag), &shaderModules);
+	
+	//NOTE: we are currently using hardcoded vertex info in our vertex shader
+	VkPipelineVertexInputStateCreateInfo vertexInputState = {};
+	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputState.pNext = NULL;
+	vertexInputState.flags = 0;
+	vertexInputState.vertexBindingDescriptionCount = 0;
+	vertexInputState.pVertexBindingDescriptions = NULL;
+	vertexInputState.vertexAttributeDescriptionCount = 0;
+	vertexInputState.pVertexAttributeDescriptions = NULL;
+
+	VkPipelineInputAssemblyStateCreateInfo assemblyStateCreateInfo = {};
+	assemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	assemblyStateCreateInfo.pNext = NULL;
+	assemblyStateCreateInfo.flags = 0;
+	assemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	assemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+	VkPipelineViewportStateCreateInfo viewPortStateCreateInfo = {};
+	viewPortStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewPortStateCreateInfo.pNext = NULL;
+	viewPortStateCreateInfo.flags = 0;
+	viewPortStateCreateInfo.viewportCount = 1;
+	viewPortStateCreateInfo.pViewports = NULL;
+	viewPortStateCreateInfo.scissorCount = 1;
+	viewPortStateCreateInfo.pScissors = NULL;
+
+	VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = {};
+	rasterizationStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizationStateCreateInfo.pNext = NULL;
+	rasterizationStateCreateInfo.flags = 0;
+	rasterizationStateCreateInfo.depthClampEnable;
+	rasterizationStateCreateInfo.rasterizerDiscardEnable;
+	rasterizationStateCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationStateCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizationStateCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizationStateCreateInfo.depthBiasEnable = VK_FALSE;
+	rasterizationStateCreateInfo.depthBiasConstantFactor = 0;
+	rasterizationStateCreateInfo.depthBiasClamp = 0;
+	rasterizationStateCreateInfo.depthBiasSlopeFactor = 0;
+	rasterizationStateCreateInfo.lineWidth = 1.0f;
+
+	VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = {};
+	multisampleStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisampleStateCreateInfo.pNext = NULL;
+	multisampleStateCreateInfo.flags = 0;
+	multisampleStateCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	multisampleStateCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisampleStateCreateInfo.minSampleShading = 0.0f;
+	multisampleStateCreateInfo.pSampleMask = NULL;
+	multisampleStateCreateInfo.alphaToCoverageEnable = VK_FALSE;
+	multisampleStateCreateInfo.alphaToOneEnable = VK_FALSE;
+
+	VkPipelineColorBlendAttachmentState colorBLendStateAttachmentState = {};
+	colorBLendStateAttachmentState.blendEnable = VK_FALSE;
+	colorBLendStateAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBLendStateAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBLendStateAttachmentState.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBLendStateAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBLendStateAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBLendStateAttachmentState.alphaBlendOp = VK_BLEND_OP_ADD;
+	colorBLendStateAttachmentState.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+	VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = {};
+	colorBlendStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendStateCreateInfo.pNext = NULL;
+	colorBlendStateCreateInfo.flags = 0;
+	colorBlendStateCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendStateCreateInfo.logicOp = VK_LOGIC_OP_NO_OP;
+	colorBlendStateCreateInfo.attachmentCount = 1;
+	colorBlendStateCreateInfo.pAttachments = &colorBLendStateAttachmentState;
+	colorBlendStateCreateInfo.blendConstants[0] = 1.0f;
+	colorBlendStateCreateInfo.blendConstants[1] = 1.0f;
+	colorBlendStateCreateInfo.blendConstants[2] = 1.0f;
+	colorBlendStateCreateInfo.blendConstants[3] = 1.0f;
+	
+	std::vector<VkDynamicState> dynamicStateEnables = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo pipelineDynamicStateInfo = {};
+	pipelineDynamicStateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	pipelineDynamicStateInfo.pNext = NULL;
+	pipelineDynamicStateInfo.flags = 0;
+	pipelineDynamicStateInfo.dynamicStateCount = dynamicStateEnables.size();
+	pipelineDynamicStateInfo.pDynamicStates = dynamicStateEnables.data();
+
+	
+	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
+	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	pipelineLayoutCreateInfo.pNext = NULL;
+	pipelineLayoutCreateInfo.flags = 0;
+	pipelineLayoutCreateInfo.setLayoutCount = 0;
+	pipelineLayoutCreateInfo.pSetLayouts = NULL;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
+	pipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+
+	VkPipelineLayout pipelineLayout = {};
+	CHECK_VK_ERROR(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
+
+	uint32_t pipelineCreateInfoCount = 1;
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo = {};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.pNext = NULL;
+	pipelineCreateInfo.flags = VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
+	pipelineCreateInfo.stageCount = graphicsPipelineStageCount;
+	pipelineCreateInfo.pStages = shaderStageCreateinfos.data();
+	pipelineCreateInfo.pVertexInputState = &vertexInputState;
+	pipelineCreateInfo.pInputAssemblyState = &assemblyStateCreateInfo;
+	pipelineCreateInfo.pTessellationState = NULL;
+	pipelineCreateInfo.pViewportState = &viewPortStateCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizationStateCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisampleStateCreateInfo;
+	pipelineCreateInfo.pDepthStencilState = NULL;
+	pipelineCreateInfo.pColorBlendState = &colorBlendStateCreateInfo;
+	pipelineCreateInfo.pDynamicState = &pipelineDynamicStateInfo;
+	pipelineCreateInfo.layout = pipelineLayout;
+	pipelineCreateInfo.renderPass = renderPass;
+	pipelineCreateInfo.subpass = 0;
+	pipelineCreateInfo.basePipelineHandle = NULL;
+	pipelineCreateInfo.basePipelineIndex = 0;
+
+
+	VkPipeline triangleGraphicsPipeline = {};
+	CHECK_VK_ERROR(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE,  pipelineCreateInfoCount, &pipelineCreateInfo, nullptr, &triangleGraphicsPipeline));
 
 
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
 	}
+
+	for (VkShaderModule module : shaderModules) {
+		vkDestroyShaderModule(logicalDevice, module, nullptr);
+	}
+
+	vkDestroyPipeline(logicalDevice, triangleGraphicsPipeline, nullptr);
+
+	vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
 
 	for (auto framebuffer : swapChainFrameBuffers) {
 		vkDestroyFramebuffer(logicalDevice, framebuffer, nullptr);
@@ -339,7 +507,6 @@ int main() {
 	for (auto imageView : swapChainImageViews) {
 		vkDestroyImageView(logicalDevice, imageView, nullptr);
 	}
-
 
 	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
