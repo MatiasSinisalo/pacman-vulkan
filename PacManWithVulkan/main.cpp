@@ -220,7 +220,6 @@ int main() {
 	VkSwapchainKHR swapChain = {};
 	CHECK_VK_ERROR(vkCreateSwapchainKHR(logicalDevice, &swapChainCreateInfo, nullptr, &swapChain));
 
-
 	//Create the renderpass
 	VkAttachmentDescription colorAttachment = {};
 	colorAttachment.format = VK_FORMAT_B8G8R8A8_SRGB;
@@ -304,6 +303,30 @@ int main() {
 		CHECK_VK_ERROR(vkCreateFramebuffer(logicalDevice, &frameBufferCreateInfo, nullptr, &swapChainFrameBuffers[i]));
 	}
 
+	//command pool
+
+	VkCommandPoolCreateInfo commandPoolCreateInfo;
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.pNext = NULL;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolCreateInfo.queueFamilyIndex = graphicsQueueIndex;
+
+	VkCommandPool commandPool = {};
+	CHECK_VK_ERROR(vkCreateCommandPool(logicalDevice, &commandPoolCreateInfo, nullptr, &commandPool));
+
+	//Allocate command buffers from the pool
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.pNext = NULL;
+	commandBufferAllocateInfo.commandPool = commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = swapChainImageCount;
+
+	std::vector<VkCommandBuffer> commandBuffers(swapChainImageCount);
+	CHECK_VK_ERROR(vkAllocateCommandBuffers(logicalDevice, &commandBufferAllocateInfo, commandBuffers.data()));
+	
+
+
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
@@ -317,6 +340,8 @@ int main() {
 		vkDestroyImageView(logicalDevice, imageView, nullptr);
 	}
 
+
+	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
 	vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
