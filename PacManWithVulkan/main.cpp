@@ -486,11 +486,107 @@ int main() {
 	VkPipeline triangleGraphicsPipeline = {};
 	CHECK_VK_ERROR(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE,  pipelineCreateInfoCount, &pipelineCreateInfo, nullptr, &triangleGraphicsPipeline));
 
+	VkSemaphoreCreateInfo imageAcquiredSemaphoreCreateInfo = {};
+	imageAcquiredSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	imageAcquiredSemaphoreCreateInfo.pNext = NULL;
+	imageAcquiredSemaphoreCreateInfo.flags = 0;
+
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // this avoids locking rendering on the first frame
+
+	VkSemaphore imageAcquiredSemaphore = {};
+	VkSemaphore renderFinishedSemaphore = {};
+	VkFence inFlightFence = {};
+	vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &imageAcquiredSemaphore);
+	vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &renderFinishedSemaphore);
+	vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFence);
+
+	
+	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
+	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	VkClearValue backgroundColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
+
+	VkViewport viewPort = {};
+	viewPort.width = 640;
+	viewPort.height = 540;
+	viewPort.maxDepth = 1.0f;
+	viewPort.minDepth = 0.0f;
+	viewPort.x = 0;
+	viewPort.y = 0;
+
+	VkRect2D sciccor = {};
+	sciccor.extent.width = 640;
+	sciccor.extent.height = 540;
+	sciccor.offset.x = 0;
+	sciccor.offset.y = 0;
 
 	while (!glfwWindowShouldClose(window))
 	{
+		vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+
+		uint32_t imageIndex;
+		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphore, VK_NULL_HANDLE,	&imageIndex);
+
+		VkRenderPassBeginInfo renderPassBeginInfo = {};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.pNext = NULL;
+		renderPassBeginInfo.renderPass = renderPass;
+		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
+		renderPassBeginInfo.renderArea.offset.x = 0;
+		renderPassBeginInfo.renderArea.offset.y = 0;
+		renderPassBeginInfo.renderArea.extent.width = 640;
+		renderPassBeginInfo.renderArea.extent.height = 480;
+		renderPassBeginInfo.clearValueCount = 1;
+		renderPassBeginInfo.pClearValues = &backgroundColor;
+		
+		vkResetCommandBuffer(commandBuffers[imageIndex], 0);
+		vkBeginCommandBuffer(commandBuffers[imageIndex], &commandBufferBeginInfo);
+		vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, triangleGraphicsPipeline);
+		vkCmdSetViewport(commandBuffers[imageIndex], 0, 1, &viewPort);
+		vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &sciccor);
+		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
+		vkCmdEndRenderPass(commandBuffers[imageIndex]);
+		vkEndCommandBuffer(commandBuffers[imageIndex]);
+
+
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &imageAcquiredSemaphore;
+		submitInfo.pWaitDstStageMask = waitStages;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+		
+		vkResetFences(logicalDevice, 1, &inFlightFence);
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+
+		VkPresentInfoKHR presentInfo{};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
+		
+		VkSwapchainKHR swapChains[] = { swapChain };
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &imageIndex;
+
+		
+		
+		vkQueuePresentKHR(presentQueue, &presentInfo);
+
 		glfwPollEvents();
 	}
+
+	//TODO: make destroying order correct
+	vkDestroySemaphore(logicalDevice, imageAcquiredSemaphore, nullptr);
+	vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
+	vkDestroyFence(logicalDevice, inFlightFence, nullptr);
 
 	for (VkShaderModule module : shaderModules) {
 		vkDestroyShaderModule(logicalDevice, module, nullptr);
