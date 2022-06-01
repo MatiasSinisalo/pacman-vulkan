@@ -485,7 +485,8 @@ int main() {
 
 	VkPipeline triangleGraphicsPipeline = {};
 	CHECK_VK_ERROR(vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE,  pipelineCreateInfoCount, &pipelineCreateInfo, nullptr, &triangleGraphicsPipeline));
-
+	
+	//TODO: create semaphores per frame
 	VkSemaphoreCreateInfo imageAcquiredSemaphoreCreateInfo = {};
 	imageAcquiredSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	imageAcquiredSemaphoreCreateInfo.pNext = NULL;
@@ -495,14 +496,16 @@ int main() {
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // this avoids locking rendering on the first frame
 
-	VkSemaphore imageAcquiredSemaphore = {};
-	VkSemaphore renderFinishedSemaphore = {};
-	VkFence inFlightFence = {};
-	vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &imageAcquiredSemaphore);
-	vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &renderFinishedSemaphore);
-	vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFence);
-
+	std::vector<VkSemaphore> imageAcquiredSemaphores(swapChainImageCount);
+	std::vector<VkSemaphore> renderFinishedSemaphores(swapChainImageCount);
+	std::vector<VkFence> inFlightFences (swapChainImageCount);
+	for (int i = 0; i < swapChainImageCount; i++) {
+		vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &imageAcquiredSemaphores[i]);
+		vkCreateSemaphore(logicalDevice, &imageAcquiredSemaphoreCreateInfo, NULL, &renderFinishedSemaphores[i]);
+		vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]);
+	}
 	
+
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -521,26 +524,29 @@ int main() {
 	sciccor.extent.height = 540;
 	sciccor.offset.x = 0;
 	sciccor.offset.y = 0;
+	
+	uint32_t imageIndex = 0;
 
+	VkRenderPassBeginInfo renderPassBeginInfo = {};
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.pNext = NULL;
+	renderPassBeginInfo.renderPass = renderPass;
+	renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
+	renderPassBeginInfo.renderArea.offset.x = 0;
+	renderPassBeginInfo.renderArea.offset.y = 0;
+	renderPassBeginInfo.renderArea.extent.width = 640;
+	renderPassBeginInfo.renderArea.extent.height = 480;
+	renderPassBeginInfo.clearValueCount = 1;
+	renderPassBeginInfo.pClearValues = &backgroundColor;
+	
 	while (!glfwWindowShouldClose(window))
 	{
-		vkWaitForFences(logicalDevice, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
+		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
-		uint32_t imageIndex;
-		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphore, VK_NULL_HANDLE,	&imageIndex);
+		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
 
-		VkRenderPassBeginInfo renderPassBeginInfo = {};
-		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassBeginInfo.pNext = NULL;
-		renderPassBeginInfo.renderPass = renderPass;
-		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
-		renderPassBeginInfo.renderArea.offset.x = 0;
-		renderPassBeginInfo.renderArea.offset.y = 0;
-		renderPassBeginInfo.renderArea.extent.width = 640;
-		renderPassBeginInfo.renderArea.extent.height = 480;
-		renderPassBeginInfo.clearValueCount = 1;
-		renderPassBeginInfo.pClearValues = &backgroundColor;
 		
+		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
 		vkResetCommandBuffer(commandBuffers[imageIndex], 0);
 		vkBeginCommandBuffer(commandBuffers[imageIndex], &commandBufferBeginInfo);
 		vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, triangleGraphicsPipeline);
@@ -551,42 +557,46 @@ int main() {
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
 
-
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &imageAcquiredSemaphore;
+		submitInfo.pWaitSemaphores = &imageAcquiredSemaphores[imageIndex];
 		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+		submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
 		
-		vkResetFences(logicalDevice, 1, &inFlightFence);
-		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence);
+		vkResetFences(logicalDevice, 1, &inFlightFences[imageIndex]);
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[imageIndex]);
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &renderFinishedSemaphore;
+		presentInfo.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
 		
 		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
 		presentInfo.pImageIndices = &imageIndex;
 
-		
-		
 		vkQueuePresentKHR(presentQueue, &presentInfo);
 
 		glfwPollEvents();
+		
+		//advance the frame forwards to look at the correct semaphore and fence
+		imageIndex = (imageIndex + 1) % swapChainImageCount;
 	}
 
-	//TODO: make destroying order correct
-	vkDestroySemaphore(logicalDevice, imageAcquiredSemaphore, nullptr);
-	vkDestroySemaphore(logicalDevice, renderFinishedSemaphore, nullptr);
-	vkDestroyFence(logicalDevice, inFlightFence, nullptr);
+	vkDeviceWaitIdle(logicalDevice);
+
+	for (int i = 0; i < swapChainImageCount; i++) {
+		vkDestroySemaphore(logicalDevice, imageAcquiredSemaphores[i], nullptr);
+		vkDestroySemaphore(logicalDevice, renderFinishedSemaphores[i], nullptr);
+		vkDestroyFence(logicalDevice, inFlightFences[i], nullptr);
+	}
+	
 
 	for (VkShaderModule module : shaderModules) {
 		vkDestroyShaderModule(logicalDevice, module, nullptr);
@@ -606,10 +616,12 @@ int main() {
 
 	vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
+	vkDestroySwapchainKHR(logicalDevice, swapChain, nullptr);
+
 	vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
 	vkDestroyDevice(logicalDevice, nullptr);
-
+	
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 
 	vkDestroyInstance(instance, nullptr);
