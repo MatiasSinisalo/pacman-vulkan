@@ -40,6 +40,14 @@ struct Vertex {
 	glm::vec3 inColor;
 };
 
+struct VulkanBuffer {
+	VkBuffer buffer;
+	VkDeviceMemory memory;
+	VkMemoryRequirements requirements;
+};
+
+
+
 
 VkPipelineShaderStageCreateInfo createShaderStage(VkDevice &logicalDevice, VkShaderStageFlagBits shaderStage, const uint32_t *shaderHeader, const uint32_t shaderHeaderSize, std::vector<VkShaderModule> *shaderModules) {
 	
@@ -75,6 +83,49 @@ uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, V
 	}
 
 	throw std::runtime_error("failed to find suitable memory type!");
+}
+
+VulkanBuffer createBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode, VkMemoryPropertyFlags memoryProperties) {
+	VulkanBuffer newVulkanBuffer = {};
+	VkBufferCreateInfo vertexBuffferCreateInfo = {};
+	vertexBuffferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vertexBuffferCreateInfo.pNext = NULL;
+	vertexBuffferCreateInfo.size = size;
+	vertexBuffferCreateInfo.usage = usage;
+	vertexBuffferCreateInfo.sharingMode = sharingMode;
+	
+	CHECK_VK_ERROR(vkCreateBuffer(logicalDevice, &vertexBuffferCreateInfo, nullptr, &newVulkanBuffer.buffer));
+
+	vkGetBufferMemoryRequirements(logicalDevice, newVulkanBuffer.buffer, &newVulkanBuffer.requirements);
+
+	VkMemoryAllocateInfo vertexAllocInfo = {};
+	vertexAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	vertexAllocInfo.pNext = NULL;
+	vertexAllocInfo.allocationSize = newVulkanBuffer.requirements.size;
+	vertexAllocInfo.memoryTypeIndex = findMemoryType(newVulkanBuffer.requirements.memoryTypeBits, memoryProperties, physicalDevice);
+
+	VkVertexInputBindingDescription shaderVertexBindingDescription = {};
+	shaderVertexBindingDescription.binding = 0;
+	shaderVertexBindingDescription.stride = sizeof(Vertex);
+	shaderVertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkDeviceMemory bufferMemory = {};
+	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &vertexAllocInfo, nullptr, &newVulkanBuffer.memory));
+	CHECK_VK_ERROR(vkBindBufferMemory(logicalDevice, newVulkanBuffer.buffer, newVulkanBuffer.memory, 0));
+
+	
+	
+
+	return newVulkanBuffer;
+
+}
+
+void fillBufferWithData(VkDevice logicalDevice, VkDeviceMemory memory, VkDeviceSize memorySize, const void * dataToCopy, size_t dataSize) {
+	void* data;
+	CHECK_VK_ERROR(vkMapMemory(logicalDevice, memory, 0, memorySize, 0, &data));
+	memcpy(data, dataToCopy, dataSize);
+	vkUnmapMemory(logicalDevice, memory);
+
 }
 
 int main() {
@@ -382,45 +433,34 @@ int main() {
 	shaderStageCreateinfos[1] = createShaderStage(logicalDevice, VK_SHADER_STAGE_FRAGMENT_BIT, shader_frag, sizeof(shader_frag), &shaderModules);
 	
 	const std::vector<Vertex> vertices = {
-	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+	};
+
+	const std::vector<uint16_t> indices = {
+		0, 1, 2, 2, 3, 0
 	};
 	
-	VkBufferCreateInfo vertexBuffferCreateInfo = {};
-	vertexBuffferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertexBuffferCreateInfo.pNext = NULL;
-	vertexBuffferCreateInfo.size = sizeof(vertices[0]) * vertices.size();
-	vertexBuffferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	vertexBuffferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	
-	VkBuffer vertexBuffer = {};
-	CHECK_VK_ERROR(vkCreateBuffer(logicalDevice, &vertexBuffferCreateInfo, nullptr, &vertexBuffer));
-	
-	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer, &memRequirements);
-	
-	VkMemoryAllocateInfo vertexAllocInfo = {};
-	vertexAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	vertexAllocInfo.pNext = NULL;
-	vertexAllocInfo.allocationSize = memRequirements.size;
-	vertexAllocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, physicalDevice);
+
+	VulkanBuffer vertexBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(vertices[0]) * vertices.size(), 
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, 
+		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	fillBufferWithData(logicalDevice, vertexBuffer.memory, vertexBuffer.requirements.size, vertices.data(), sizeof(vertices[0]) * vertices.size());
+
+	VulkanBuffer indexBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(indices[0]) * indices.size(),
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, 
+		(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+		);
+	fillBufferWithData(logicalDevice, indexBuffer.memory, indexBuffer.requirements.size, indices.data(), sizeof(indices[0]) * indices.size());
+
 
 	VkVertexInputBindingDescription shaderVertexBindingDescription = {};
 	shaderVertexBindingDescription.binding = 0;
 	shaderVertexBindingDescription.stride = sizeof(Vertex);
 	shaderVertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkDeviceMemory vertexBufferMemory = {};
-	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &vertexAllocInfo, nullptr, &vertexBufferMemory));
-	CHECK_VK_ERROR(vkBindBufferMemory(logicalDevice, vertexBuffer, vertexBufferMemory, 0));
-
-	void* data;
-	CHECK_VK_ERROR(vkMapMemory(logicalDevice, vertexBufferMemory, 0, memRequirements.size, 0, &data));
-	memcpy(data, vertices.data(), (size_t) vertexBuffferCreateInfo.size);
-	vkUnmapMemory(logicalDevice, vertexBufferMemory);
-
-	
 
 	VkVertexInputAttributeDescription shaderVertexPositionAttributeDescription = {};
 	shaderVertexPositionAttributeDescription.location = 0;
@@ -584,7 +624,7 @@ int main() {
 
 	VkViewport viewPort = {};
 	viewPort.width = 640;
-	viewPort.height = 540;
+	viewPort.height = 480;
 	viewPort.maxDepth = 1.0f;
 	viewPort.minDepth = 0.0f;
 	viewPort.x = 0;
@@ -592,7 +632,7 @@ int main() {
 
 	VkRect2D sciccor = {};
 	sciccor.extent.width = 640;
-	sciccor.extent.height = 540;
+	sciccor.extent.height = 480;
 	sciccor.offset.x = 0;
 	sciccor.offset.y = 0;
 	
@@ -611,7 +651,7 @@ int main() {
 	renderPassBeginInfo.pClearValues = &backgroundColor;
 	
 
-	VkBuffer vertexBuffers[] = { vertexBuffer };
+	VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
 	VkDeviceSize offsets[] = { 0 };
 	while (!glfwWindowShouldClose(window))
 	{
@@ -628,7 +668,8 @@ int main() {
 		vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &sciccor);
 		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
-		vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
+		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+		vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
 
@@ -665,8 +706,11 @@ int main() {
 
 	vkDeviceWaitIdle(logicalDevice);
 
-	vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
-	vkFreeMemory(logicalDevice, vertexBufferMemory, nullptr);
+	vkDestroyBuffer(logicalDevice, vertexBuffer.buffer, nullptr);
+	vkFreeMemory(logicalDevice, vertexBuffer.memory, nullptr);
+
+	vkDestroyBuffer(logicalDevice, indexBuffer.buffer, nullptr);
+	vkFreeMemory(logicalDevice, indexBuffer.memory, nullptr);
 
 	for (int i = 0; i < swapChainImageCount; i++) {
 		vkDestroySemaphore(logicalDevice, imageAcquiredSemaphores[i], nullptr);
