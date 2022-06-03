@@ -9,7 +9,7 @@
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
-
+#include <glm/glm.hpp>
 
 
 #include "shader_vert.spv.h"
@@ -35,6 +35,12 @@ c Multiline makros: https://www.geeksforgeeks.org/multiline-macros-in-c/?ref=lbp
 	}\
 }
 
+struct Vertex {
+	glm::vec2 pos;
+	glm::vec3 inColor;
+};
+
+
 VkPipelineShaderStageCreateInfo createShaderStage(VkDevice &logicalDevice, VkShaderStageFlagBits shaderStage, const uint32_t *shaderHeader, const uint32_t shaderHeaderSize, std::vector<VkShaderModule> *shaderModules) {
 	
 	VkShaderModuleCreateInfo shaderModuleCreateInfo = {};
@@ -59,6 +65,17 @@ VkPipelineShaderStageCreateInfo createShaderStage(VkDevice &logicalDevice, VkSha
 	return shaderStageCreateInfo;
 }
 
+uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+			return i;
+		}
+	}
+
+	throw std::runtime_error("failed to find suitable memory type!");
+}
 
 int main() {
 	
@@ -364,15 +381,69 @@ int main() {
 	shaderStageCreateinfos[0] = createShaderStage(logicalDevice, VK_SHADER_STAGE_VERTEX_BIT, shader_vert, sizeof(shader_vert), &shaderModules);
 	shaderStageCreateinfos[1] = createShaderStage(logicalDevice, VK_SHADER_STAGE_FRAGMENT_BIT, shader_frag, sizeof(shader_frag), &shaderModules);
 	
-	//NOTE: we are currently using hardcoded vertex info in our vertex shader
+	const std::vector<Vertex> vertices = {
+	{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+	};
+	
+	VkBufferCreateInfo vertexBuffferCreateInfo = {};
+	vertexBuffferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	vertexBuffferCreateInfo.pNext = NULL;
+	vertexBuffferCreateInfo.size = sizeof(vertices[0]) * vertices.size();
+	vertexBuffferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vertexBuffferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	
+	VkBuffer vertexBuffer = {};
+	CHECK_VK_ERROR(vkCreateBuffer(logicalDevice, &vertexBuffferCreateInfo, nullptr, &vertexBuffer));
+	
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(logicalDevice, vertexBuffer, &memRequirements);
+	
+	VkMemoryAllocateInfo vertexAllocInfo = {};
+	vertexAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	vertexAllocInfo.pNext = NULL;
+	vertexAllocInfo.allocationSize = memRequirements.size;
+	vertexAllocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, physicalDevice);
+
+	VkVertexInputBindingDescription shaderVertexBindingDescription = {};
+	shaderVertexBindingDescription.binding = 0;
+	shaderVertexBindingDescription.stride = sizeof(Vertex);
+	shaderVertexBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+	VkDeviceMemory vertexBufferMemory = {};
+	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &vertexAllocInfo, nullptr, &vertexBufferMemory));
+	CHECK_VK_ERROR(vkBindBufferMemory(logicalDevice, vertexBuffer, vertexBufferMemory, 0));
+
+	void* data;
+	CHECK_VK_ERROR(vkMapMemory(logicalDevice, vertexBufferMemory, 0, memRequirements.size, 0, &data));
+	memcpy(data, vertices.data(), (size_t) vertexBuffferCreateInfo.size);
+	vkUnmapMemory(logicalDevice, vertexBufferMemory);
+
+	
+
+	VkVertexInputAttributeDescription shaderVertexPositionAttributeDescription = {};
+	shaderVertexPositionAttributeDescription.location = 0;
+	shaderVertexPositionAttributeDescription.binding = 0;
+	shaderVertexPositionAttributeDescription.format = VK_FORMAT_R32G32_SFLOAT;
+	shaderVertexPositionAttributeDescription.offset = offsetof(Vertex, pos);
+
+	VkVertexInputAttributeDescription shaderVertexColorAttributeDescription = {};
+	shaderVertexColorAttributeDescription.location = 1;
+	shaderVertexColorAttributeDescription.binding = 0;
+	shaderVertexColorAttributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
+	shaderVertexColorAttributeDescription.offset = offsetof(Vertex, inColor);
+
+	VkVertexInputAttributeDescription AttributeDescriptions[2] = { shaderVertexPositionAttributeDescription, shaderVertexColorAttributeDescription };
+
 	VkPipelineVertexInputStateCreateInfo vertexInputState = {};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertexInputState.pNext = NULL;
 	vertexInputState.flags = 0;
-	vertexInputState.vertexBindingDescriptionCount = 0;
-	vertexInputState.pVertexBindingDescriptions = NULL;
-	vertexInputState.vertexAttributeDescriptionCount = 0;
-	vertexInputState.pVertexAttributeDescriptions = NULL;
+	vertexInputState.vertexBindingDescriptionCount = 1;
+	vertexInputState.pVertexBindingDescriptions = &shaderVertexBindingDescription;
+	vertexInputState.vertexAttributeDescriptionCount = 2;
+	vertexInputState.pVertexAttributeDescriptions = AttributeDescriptions;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyStateCreateInfo = {};
 	assemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -539,20 +610,24 @@ int main() {
 	renderPassBeginInfo.clearValueCount = 1;
 	renderPassBeginInfo.pClearValues = &backgroundColor;
 	
+
+	VkBuffer vertexBuffers[] = { vertexBuffer };
+	VkDeviceSize offsets[] = { 0 };
 	while (!glfwWindowShouldClose(window))
 	{
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
 
-		
 		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
+
 		vkResetCommandBuffer(commandBuffers[imageIndex], 0);
 		vkBeginCommandBuffer(commandBuffers[imageIndex], &commandBufferBeginInfo);
 		vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, triangleGraphicsPipeline);
 		vkCmdSetViewport(commandBuffers[imageIndex], 0, 1, &viewPort);
 		vkCmdSetScissor(commandBuffers[imageIndex], 0, 1, &sciccor);
 		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
 		vkCmdDraw(commandBuffers[imageIndex], 3, 1, 0, 0);
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
@@ -576,9 +651,8 @@ int main() {
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
 		
-		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = swapChains;
+		presentInfo.pSwapchains = &swapChain;
 		presentInfo.pImageIndices = &imageIndex;
 
 		vkQueuePresentKHR(presentQueue, &presentInfo);
@@ -590,6 +664,9 @@ int main() {
 	}
 
 	vkDeviceWaitIdle(logicalDevice);
+
+	vkDestroyBuffer(logicalDevice, vertexBuffer, nullptr);
+	vkFreeMemory(logicalDevice, vertexBufferMemory, nullptr);
 
 	for (int i = 0; i < swapChainImageCount; i++) {
 		vkDestroySemaphore(logicalDevice, imageAcquiredSemaphores[i], nullptr);
