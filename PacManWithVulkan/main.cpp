@@ -10,7 +10,8 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <glm/glm.hpp>
-
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 
 #include "shader_vert.spv.h"
 #include "shader_frag.spv.h"
@@ -616,9 +617,98 @@ int main() {
 		vkCreateFence(logicalDevice, &fenceInfo, nullptr, &inFlightFences[i]);
 	}
 	
+	//Load an image to tmpBuffer
+	int texWidth;
+	int texHeight;
+	int texChannels;
+	stbi_uc* pixels = stbi_load("textures/smile.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	VkDeviceSize imageSize = texWidth * texHeight * 4;
+	VulkanBuffer tmpImageBuffer = createBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	fillBufferWithData(logicalDevice, tmpImageBuffer.memory, tmpImageBuffer.requirements.size, pixels, imageSize);
+	stbi_image_free(pixels);
+	VkImageCreateInfo imageCreateInfo = {};
+	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCreateInfo.pNext = NULL;
+	imageCreateInfo.flags = 0;
+	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D; 
+	imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageCreateInfo.extent.width = texWidth;
+	imageCreateInfo.extent.height = texHeight;
+	imageCreateInfo.extent.depth = 1.0f;
+	imageCreateInfo.mipLevels = 1;
+	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;;
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.queueFamilyIndexCount = 1;
+	imageCreateInfo.pQueueFamilyIndices = &graphicsQueueIndex;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+	CHECK_VK_ERROR(vkCreateImage(logicalDevice, &imageCreateInfo, nullptr, &textureImage));
+	
+	//Allocate the imageBuffer
+	VkMemoryRequirements textureImageRequirements;
+	vkGetImageMemoryRequirements(logicalDevice, textureImage, &textureImageRequirements);
+	VkMemoryAllocateInfo textureAllocInfo = {};
+	textureAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	textureAllocInfo.pNext = NULL;
+	textureAllocInfo.allocationSize = textureImageRequirements.size;
+	textureAllocInfo.memoryTypeIndex = findMemoryType(textureImageRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
+	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &textureAllocInfo, nullptr, &textureImageMemory));
+	vkBindImageMemory(logicalDevice, textureImage, textureImageMemory, 0);
+	
 
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+	//Barrier for syncing transition from LAYOUT_UNDEFINED to OPTIMAL
+	VkImageSubresourceRange textureImageSubresourceRange = {};
+	textureImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	textureImageSubresourceRange.baseMipLevel = 0;
+	textureImageSubresourceRange.baseArrayLayer = 0;
+	textureImageSubresourceRange.layerCount = 1;
+
+	VkImageMemoryBarrier textureTransitionBarrier = {};
+	textureTransitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	textureTransitionBarrier.pNext = NULL;
+	textureTransitionBarrier.srcAccessMask = 0;
+	textureTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	textureTransitionBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	textureTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	textureTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.image = textureImage;
+	textureTransitionBarrier.subresourceRange = textureImageSubresourceRange;
+
+	//Copy the image from the tmp buffer to the imagebuffer
+	
+	vkBeginCommandBuffer(commandBuffers[0], &commandBufferBeginInfo);
+	
+	vkCmdPipelineBarrier(commandBuffers[0], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,	0, 0, nullptr, 0, nullptr, 1, &textureTransitionBarrier);
+
+	VkBufferImageCopy textureCopyInfo = {};
+	textureCopyInfo.bufferOffset = 0;
+	textureCopyInfo.bufferRowLength = 0;
+	textureCopyInfo.bufferImageHeight = 0;
+	textureCopyInfo.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	textureCopyInfo.imageSubresource.mipLevel = 0;
+	textureCopyInfo.imageSubresource.baseArrayLayer = 0;
+	textureCopyInfo.imageSubresource.layerCount = 1;
+	textureCopyInfo.imageOffset = { 0, 0, 0 };
+	textureCopyInfo.imageExtent = { (uint32_t) texWidth, (uint32_t) texHeight, 1};
+	vkCmdCopyBufferToImage(commandBuffers[0], tmpImageBuffer.buffer, textureImage,	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &textureCopyInfo);
+	
+	vkEndCommandBuffer(commandBuffers[0]);
+	VkSubmitInfo tmpCommandBufferSubmitInfo = {};
+	tmpCommandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	tmpCommandBufferSubmitInfo.commandBufferCount = 1;
+	tmpCommandBufferSubmitInfo.pCommandBuffers = &commandBuffers[0];
+	vkQueueSubmit(graphicsQueue, 1, &tmpCommandBufferSubmitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(graphicsQueue);
+
+	
 
 	VkClearValue backgroundColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 
