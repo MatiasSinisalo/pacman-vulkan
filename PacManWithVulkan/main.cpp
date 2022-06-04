@@ -626,6 +626,7 @@ int main() {
 	VulkanBuffer tmpImageBuffer = createBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	fillBufferWithData(logicalDevice, tmpImageBuffer.memory, tmpImageBuffer.requirements.size, pixels, imageSize);
 	stbi_image_free(pixels);
+	
 	VkImageCreateInfo imageCreateInfo = {};
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.pNext = NULL;
@@ -669,46 +670,49 @@ int main() {
 	textureImageSubresourceRange.baseMipLevel = 0;
 	textureImageSubresourceRange.baseArrayLayer = 0;
 	textureImageSubresourceRange.layerCount = 1;
+	textureImageSubresourceRange.levelCount = 1;
 
 	VkImageMemoryBarrier textureTransitionBarrier = {};
 	textureTransitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	textureTransitionBarrier.pNext = NULL;
 	textureTransitionBarrier.srcAccessMask = 0;
-	textureTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+	textureTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	textureTransitionBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	textureTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	textureTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	textureTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	textureTransitionBarrier.image = textureImage;
 	textureTransitionBarrier.subresourceRange = textureImageSubresourceRange;
-
-	//Copy the image from the tmp buffer to the imagebuffer
 	
+	VkBufferImageCopy imageCopyInformation = {};
+	imageCopyInformation.bufferOffset = 0;
+	imageCopyInformation.bufferRowLength = 0;
+	imageCopyInformation.bufferImageHeight = 0;
+	imageCopyInformation.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopyInformation.imageSubresource.mipLevel = 0;
+	imageCopyInformation.imageSubresource.baseArrayLayer = 0;
+	imageCopyInformation.imageSubresource.layerCount = 1;
+	imageCopyInformation.imageOffset = { 0, 0, 0 };
+	imageCopyInformation.imageExtent = {
+		(uint32_t) texWidth,
+		(uint32_t) texHeight,
+		1
+	};
+
+	//Transition image to the right format and move it from the tmpbuffer to the GPU side imagebuffer
 	vkBeginCommandBuffer(commandBuffers[0], &commandBufferBeginInfo);
-	
 	vkCmdPipelineBarrier(commandBuffers[0], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,	0, 0, nullptr, 0, nullptr, 1, &textureTransitionBarrier);
-
-	VkBufferImageCopy textureCopyInfo = {};
-	textureCopyInfo.bufferOffset = 0;
-	textureCopyInfo.bufferRowLength = 0;
-	textureCopyInfo.bufferImageHeight = 0;
-	textureCopyInfo.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	textureCopyInfo.imageSubresource.mipLevel = 0;
-	textureCopyInfo.imageSubresource.baseArrayLayer = 0;
-	textureCopyInfo.imageSubresource.layerCount = 1;
-	textureCopyInfo.imageOffset = { 0, 0, 0 };
-	textureCopyInfo.imageExtent = { (uint32_t) texWidth, (uint32_t) texHeight, 1};
-	vkCmdCopyBufferToImage(commandBuffers[0], tmpImageBuffer.buffer, textureImage,	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &textureCopyInfo);
-	
+	vkCmdCopyBufferToImage(commandBuffers[0], tmpImageBuffer.buffer, textureImage,	VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	1,	&imageCopyInformation);
 	vkEndCommandBuffer(commandBuffers[0]);
+	
 	VkSubmitInfo tmpCommandBufferSubmitInfo = {};
 	tmpCommandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	tmpCommandBufferSubmitInfo.commandBufferCount = 1;
 	tmpCommandBufferSubmitInfo.pCommandBuffers = &commandBuffers[0];
 	vkQueueSubmit(graphicsQueue, 1, &tmpCommandBufferSubmitInfo, VK_NULL_HANDLE);
 	vkQueueWaitIdle(graphicsQueue);
-
-	
+	vkDestroyBuffer(logicalDevice, tmpImageBuffer.buffer, nullptr);
+	vkFreeMemory(logicalDevice, tmpImageBuffer.memory, nullptr);
 
 	VkClearValue backgroundColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 
@@ -740,7 +744,6 @@ int main() {
 	renderPassBeginInfo.clearValueCount = 1;
 	renderPassBeginInfo.pClearValues = &backgroundColor;
 	
-
 	VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
 	VkDeviceSize offsets[] = { 0 };
 	while (!glfwWindowShouldClose(window))
@@ -794,7 +797,11 @@ int main() {
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
 	}
 
-	vkDeviceWaitIdle(logicalDevice);
+	vkQueueWaitIdle(graphicsQueue);
+	vkQueueWaitIdle(presentQueue);
+
+	vkDestroyImage(logicalDevice, textureImage, nullptr);
+	vkFreeMemory(logicalDevice, textureImageMemory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, vertexBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, vertexBuffer.memory, nullptr);
