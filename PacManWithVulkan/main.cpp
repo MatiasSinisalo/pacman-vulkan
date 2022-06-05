@@ -39,6 +39,7 @@ c Multiline makros: https://www.geeksforgeeks.org/multiline-macros-in-c/?ref=lbp
 struct Vertex {
 	glm::vec2 pos;
 	glm::vec3 inColor;
+	glm::vec2 texCoord;
 };
 
 struct VulkanBuffer {
@@ -434,10 +435,10 @@ int main() {
 	shaderStageCreateinfos[1] = createShaderStage(logicalDevice, VK_SHADER_STAGE_FRAGMENT_BIT, shader_frag, sizeof(shader_frag), &shaderModules);
 	
 	const std::vector<Vertex> vertices = {
-	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 	};
 
 	const std::vector<uint16_t> indices = {
@@ -589,9 +590,6 @@ int main() {
 	VkSampler textureSampler = {};
 	CHECK_VK_ERROR(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &textureSampler));
 
-
-
-	
 	VkVertexInputBindingDescription shaderVertexBindingDescription = {};
 	shaderVertexBindingDescription.binding = 0;
 	shaderVertexBindingDescription.stride = sizeof(Vertex);
@@ -609,7 +607,13 @@ int main() {
 	shaderVertexColorAttributeDescription.format = VK_FORMAT_R32G32B32_SFLOAT;
 	shaderVertexColorAttributeDescription.offset = offsetof(Vertex, inColor);
 
-	VkVertexInputAttributeDescription AttributeDescriptions[2] = { shaderVertexPositionAttributeDescription, shaderVertexColorAttributeDescription };
+	VkVertexInputAttributeDescription shaderVertexTexCoordAttributeDescription = {};
+	shaderVertexTexCoordAttributeDescription.location = 2;
+	shaderVertexTexCoordAttributeDescription.binding = 0;
+	shaderVertexTexCoordAttributeDescription.format = VK_FORMAT_R32G32_SFLOAT;
+	shaderVertexTexCoordAttributeDescription.offset = offsetof(Vertex, texCoord);
+
+	VkVertexInputAttributeDescription AttributeDescriptions[3] = { shaderVertexPositionAttributeDescription, shaderVertexColorAttributeDescription, shaderVertexTexCoordAttributeDescription };
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState = {};
 	vertexInputState.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -617,7 +621,7 @@ int main() {
 	vertexInputState.flags = 0;
 	vertexInputState.vertexBindingDescriptionCount = 1;
 	vertexInputState.pVertexBindingDescriptions = &shaderVertexBindingDescription;
-	vertexInputState.vertexAttributeDescriptionCount = 2;
+	vertexInputState.vertexAttributeDescriptionCount = 3;
 	vertexInputState.pVertexAttributeDescriptions = AttributeDescriptions;
 
 	VkPipelineInputAssemblyStateCreateInfo assemblyStateCreateInfo = {};
@@ -693,7 +697,6 @@ int main() {
 	pipelineDynamicStateInfo.dynamicStateCount = dynamicStateEnables.size();
 	pipelineDynamicStateInfo.pDynamicStates = dynamicStateEnables.data();
 
-	
 	VkDescriptorSetLayoutBinding samplerDescriptionSetBinding = {};
 	samplerDescriptionSetBinding.binding = 0;
 	samplerDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -855,6 +858,7 @@ int main() {
 		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
+		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &samplerDescriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
@@ -891,6 +895,9 @@ int main() {
 	}
 
 	vkQueueWaitIdle(graphicsQueue);
+
+	vkDestroyDescriptorSetLayout(logicalDevice, samplerDescriptorLayout, nullptr);
+	vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 
 	vkDestroySampler(logicalDevice, textureSampler, nullptr);
 	vkDestroyImageView(logicalDevice, textureImageView, nullptr);
