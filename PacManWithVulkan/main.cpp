@@ -660,7 +660,6 @@ int main() {
 	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &textureAllocInfo, nullptr, &textureImageMemory));
 	vkBindImageMemory(logicalDevice, textureImage, textureImageMemory, 0);
 	
-
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
@@ -713,6 +712,42 @@ int main() {
 	vkQueueWaitIdle(graphicsQueue);
 	vkDestroyBuffer(logicalDevice, tmpImageBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, tmpImageBuffer.memory, nullptr);
+
+	//Create an imageview to the image
+	VkImageViewCreateInfo imageViewCreateInfo = {};
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.image = textureImage;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageViewCreateInfo.subresourceRange = textureImageSubresourceRange;
+	VkImageView textureImageView;
+	CHECK_VK_ERROR(vkCreateImageView(logicalDevice, &imageViewCreateInfo, nullptr, &textureImageView));
+
+	//Create an sampler to use the imageView
+	VkSamplerCreateInfo samplerCreateInfo = {};
+	samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerCreateInfo.pNext = NULL;
+	samplerCreateInfo.flags = 0;
+	samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+	samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.mipLodBias = 1.0f;
+	samplerCreateInfo.anisotropyEnable = VK_FALSE;
+	samplerCreateInfo.maxAnisotropy = 1.0f;
+	samplerCreateInfo.compareEnable = VK_FALSE;
+	samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerCreateInfo.minLod = 0.0f;
+	samplerCreateInfo.maxLod = 0.0f;
+	samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+	samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+
+	VkSampler textureSampler = {};
+	CHECK_VK_ERROR(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &textureSampler));
 
 	VkClearValue backgroundColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 
@@ -798,7 +833,9 @@ int main() {
 	}
 
 	vkQueueWaitIdle(graphicsQueue);
-	vkQueueWaitIdle(presentQueue);
+
+	vkDestroySampler(logicalDevice, textureSampler, nullptr);
+	vkDestroyImageView(logicalDevice, textureImageView, nullptr);
 
 	vkDestroyImage(logicalDevice, textureImage, nullptr);
 	vkFreeMemory(logicalDevice, textureImageMemory, nullptr);
