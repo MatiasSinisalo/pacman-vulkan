@@ -10,6 +10,7 @@
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -46,6 +47,10 @@ struct VulkanBuffer {
 	VkBuffer buffer;
 	VkDeviceMemory memory;
 	VkMemoryRequirements requirements;
+};
+
+struct ubo {
+	glm::mat4 model;
 };
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
@@ -131,12 +136,22 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	samplerDescriptionSetBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	samplerDescriptionSetBinding.pImmutableSamplers = nullptr;
 
+
+	VkDescriptorSetLayoutBinding UBODescriptionSetBinding = {};
+	UBODescriptionSetBinding.binding = 1;
+	UBODescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	UBODescriptionSetBinding.descriptorCount = 1;
+	UBODescriptionSetBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	UBODescriptionSetBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> bindings = { samplerDescriptionSetBinding , UBODescriptionSetBinding };
+
 	VkDescriptorSetLayoutCreateInfo samplerDescriptionSetLayotInfo = {};
 	samplerDescriptionSetLayotInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	samplerDescriptionSetLayotInfo.pNext = NULL;
 	samplerDescriptionSetLayotInfo.flags = 0;
-	samplerDescriptionSetLayotInfo.bindingCount = 1;
-	samplerDescriptionSetLayotInfo.pBindings = &samplerDescriptionSetBinding;
+	samplerDescriptionSetLayotInfo.bindingCount = 2;
+	samplerDescriptionSetLayotInfo.pBindings = bindings.data();
 
 	VkDescriptorSetLayout descriptorSetLayout;
 	vkCreateDescriptorSetLayout(logicalDevice, &samplerDescriptionSetLayotInfo, nullptr, &descriptorSetLayout);
@@ -144,17 +159,26 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 }
 
 VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, VkDescriptorSetLayout samplerDescriptorLayout, uint32_t swapChainImageCount) {
+	VkDescriptorPoolSize samplerPoolSize = {};
+	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerPoolSize.descriptorCount = 1;
+
 	VkDescriptorPoolSize descriptorPoolSize = {};
-	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	descriptorPoolSize.descriptorCount = 1;
+
+	std::vector<VkDescriptorPoolSize> sizes = { samplerPoolSize , descriptorPoolSize };
+
+
 	VkDescriptorPoolCreateInfo descriptorPoolInfo{};
 	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	descriptorPoolInfo.poolSizeCount = 1;
-	descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
-	descriptorPoolInfo.maxSets = swapChainImageCount;
+	descriptorPoolInfo.poolSizeCount = 2;
+	descriptorPoolInfo.pPoolSizes = sizes.data();
+	descriptorPoolInfo.maxSets = swapChainImageCount * 2;
 	VkDescriptorPool descriptorPool;
 	vkCreateDescriptorPool(logicalDevice, &descriptorPoolInfo, nullptr, &descriptorPool);
 	return descriptorPool;
+
 
 };
 
@@ -189,9 +213,24 @@ void createImageDescriptor(VkDevice logicalDevice, VkImageView imageView, VkSamp
 	descriptorWrite.pImageInfo = &imageDescriptorInfo;
 	descriptorWrite.pBufferInfo; // ignored
 	descriptorWrite.pTexelBufferView; // ignored
+
 	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
 }
-
+void createBufferDescriptor(VkDevice logicalDevice, VkDescriptorSet descriptorSet, VkBuffer buffer) {
+	VkDescriptorBufferInfo uboBufferInfo{};
+	uboBufferInfo.buffer = buffer;
+	uboBufferInfo.offset = 0;
+	uboBufferInfo.range = sizeof(ubo);
+	VkWriteDescriptorSet descriptorWrite{};
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.dstSet = descriptorSet;
+	descriptorWrite.dstBinding = 1;
+	descriptorWrite.dstArrayElement = 0;
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrite.descriptorCount = 1;
+	descriptorWrite.pBufferInfo = &uboBufferInfo;
+	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
+}
 VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, uint32_t swapChainImageCount, VkDescriptorSetLayout descriptorSetLayout) {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -532,6 +571,9 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
+
+
+
 int main() {
 	
 	if (!glfwInit())
@@ -859,15 +901,20 @@ int main() {
 	//create image, image memory and imageview and store them inside vulkanTexture struct
 	vulkanTexture texture = createTexture(logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 
-	//Create an sampler to use the imageView
-	
-
 	VkSampler textureSampler = createSampler(logicalDevice);
+
+	
+	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	ubo testData = {};
+	testData.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.0f, 0.0f));
+	fillBufferWithData(logicalDevice,uboBuffer.memory, uboBuffer.requirements.size, &testData, sizeof(testData));
 
 	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
 	VkDescriptorPool descriptorPool = createDescriptorPool(logicalDevice, descriptorSetLayout, swapChainImageCount);
-	VkDescriptorSet samplerDescriptorSet = createDescriptorSet(logicalDevice, descriptorSetLayout, descriptorPool);
-	createImageDescriptor(logicalDevice, texture.textureImageView, textureSampler, samplerDescriptorSet);
+	VkDescriptorSet descriptorSet = createDescriptorSet(logicalDevice, descriptorSetLayout, descriptorPool);
+	
+	createBufferDescriptor(logicalDevice, descriptorSet, uboBuffer.buffer);
+	createImageDescriptor(logicalDevice, texture.textureImageView, textureSampler, descriptorSet);
 
 	//Create Graphics pipeline
 	uint32_t graphicsPipelineStageCount = 2;
@@ -947,7 +994,7 @@ int main() {
 		vkCmdBeginRenderPass(commandBuffers[imageIndex], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 		vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
-		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &samplerDescriptorSet, 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
@@ -993,6 +1040,9 @@ int main() {
 
 	vkDestroyImage(logicalDevice, texture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, texture.textureImageMemory, nullptr);
+
+	vkDestroyBuffer(logicalDevice, uboBuffer.buffer, nullptr);
+	vkFreeMemory(logicalDevice, uboBuffer.memory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, vertexBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, vertexBuffer.memory, nullptr);
