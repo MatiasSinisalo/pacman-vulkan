@@ -48,11 +48,6 @@ struct VulkanBuffer {
 	VkMemoryRequirements requirements;
 };
 
-
-
-
-
-
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -104,7 +99,6 @@ void fillBufferWithData(VkDevice logicalDevice, VkDeviceMemory memory, VkDeviceS
 
 }
 
-
 VkPipelineShaderStageCreateInfo createShaderStage(VkDevice& logicalDevice, VkShaderStageFlagBits shaderStage, const uint32_t* shaderHeader, const uint32_t shaderHeaderSize, std::vector<VkShaderModule>* shaderModules) {
 
 	VkShaderModuleCreateInfo shaderModuleCreateInfo = {};
@@ -129,7 +123,6 @@ VkPipelineShaderStageCreateInfo createShaderStage(VkDevice& logicalDevice, VkSha
 	return shaderStageCreateInfo;
 }
 
-
 VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	VkDescriptorSetLayoutBinding samplerDescriptionSetBinding = {};
 	samplerDescriptionSetBinding.binding = 0;
@@ -149,7 +142,6 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	vkCreateDescriptorSetLayout(logicalDevice, &samplerDescriptionSetLayotInfo, nullptr, &descriptorSetLayout);
 	return descriptorSetLayout;
 }
-
 
 VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, VkDescriptorSetLayout samplerDescriptorLayout, uint32_t swapChainImageCount) {
 	VkDescriptorPoolSize descriptorPoolSize = {};
@@ -180,7 +172,6 @@ VkDescriptorSet createDescriptorSet(VkDevice logicalDevice, VkDescriptorSetLayou
 	return descriptorSet;
 }
 
-
 void createImageDescriptor(VkDevice logicalDevice, VkImageView imageView, VkSampler sampler, VkDescriptorSet descriptorSet) {
 	VkDescriptorImageInfo imageDescriptorInfo{};
 	imageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -201,8 +192,6 @@ void createImageDescriptor(VkDevice logicalDevice, VkImageView imageView, VkSamp
 	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
 }
 
-
-
 VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, uint32_t swapChainImageCount, VkDescriptorSetLayout descriptorSetLayout) {
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -217,7 +206,6 @@ VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, uint32_t swapChain
 	CHECK_VK_ERROR(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 	return pipelineLayout;
 }
-
 
 VkPipeline createPipeline(VkDevice logicalDevice, VkPipelineLayout pipelineLayout, VkRenderPass renderPass, VkShaderModule *shaderModules, VkPipelineShaderStageCreateInfo *shaderStageCreateinfos, uint32_t graphicsPipelineStageCount) {
 	VkVertexInputBindingDescription shaderVertexBindingDescription = {};
@@ -355,9 +343,194 @@ VkPipeline createPipeline(VkDevice logicalDevice, VkPipelineLayout pipelineLayou
 	return graphicsPipeline;
 }
 
+struct vulkanTexture {
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+	VkImageView textureImageView;
+};
+
+void makeImageLayotTransition(VkCommandBuffer commandbuffer, VkQueue graphicsQueue, VkImage textureImage, VkAccessFlags srcAccessMask, 
+							  VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, VkCommandBufferBeginInfo commandBufferBeginInfo) {
+	VkImageSubresourceRange textureImageSubresourceRange = {};
+	textureImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	textureImageSubresourceRange.baseMipLevel = 0;
+	textureImageSubresourceRange.baseArrayLayer = 0;
+	textureImageSubresourceRange.layerCount = 1;
+	textureImageSubresourceRange.levelCount = 1;
+
+	VkImageMemoryBarrier textureTransitionBarrier = {};
+	textureTransitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	textureTransitionBarrier.pNext = NULL;
+	textureTransitionBarrier.srcAccessMask = srcAccessMask;
+	textureTransitionBarrier.dstAccessMask = dstAccessMask;
+	textureTransitionBarrier.oldLayout = oldLayout;
+	textureTransitionBarrier.newLayout = newLayout;
+	textureTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.image = textureImage;
+	textureTransitionBarrier.subresourceRange = textureImageSubresourceRange;
+
+
+	//Transition image to the right format and move it from the tmpbuffer to the GPU side imagebuffer
+	vkBeginCommandBuffer(commandbuffer, &commandBufferBeginInfo);
+	vkCmdPipelineBarrier(commandbuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &textureTransitionBarrier);
+	
+	vkEndCommandBuffer(commandbuffer);
+
+	VkSubmitInfo tmpCommandBufferSubmitInfo = {};
+	tmpCommandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	tmpCommandBufferSubmitInfo.commandBufferCount = 1;
+	tmpCommandBufferSubmitInfo.pCommandBuffers = &commandbuffer;
+	vkQueueSubmit(graphicsQueue, 1, &tmpCommandBufferSubmitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(graphicsQueue);
+
+	
+}
 
 
 
+vulkanTexture createTexture(VkDevice logicalDevice, VkPhysicalDevice physicalDevice, uint32_t graphicsQueueIndex, VkQueue graphicsQueue, VkCommandBuffer commandbuffer, VkCommandBufferBeginInfo commandBufferBeginInfo) {
+	//Load an image to tmpBuffer
+	int texWidth;
+	int texHeight;
+	int texChannels;
+	stbi_uc* pixels = stbi_load("textures/smile.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	VkDeviceSize imageSize = texWidth * texHeight * 4;
+	VulkanBuffer tmpImageBuffer = createBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+	fillBufferWithData(logicalDevice, tmpImageBuffer.memory, tmpImageBuffer.requirements.size, pixels, imageSize);
+	stbi_image_free(pixels);
+
+	VkImageCreateInfo imageCreateInfo = {};
+	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCreateInfo.pNext = NULL;
+	imageCreateInfo.flags = 0;
+	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageCreateInfo.extent.width = texWidth;
+	imageCreateInfo.extent.height = texHeight;
+	imageCreateInfo.extent.depth = 1.0f;
+	imageCreateInfo.mipLevels = 1;
+	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;;
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	imageCreateInfo.queueFamilyIndexCount = 1;
+	imageCreateInfo.pQueueFamilyIndices = &graphicsQueueIndex;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+	CHECK_VK_ERROR(vkCreateImage(logicalDevice, &imageCreateInfo, nullptr, &textureImage));
+
+	//Allocate the imageBuffer
+	VkMemoryRequirements textureImageRequirements;
+	vkGetImageMemoryRequirements(logicalDevice, textureImage, &textureImageRequirements);
+	VkMemoryAllocateInfo textureAllocInfo = {};
+	textureAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	textureAllocInfo.pNext = NULL;
+	textureAllocInfo.allocationSize = textureImageRequirements.size;
+	textureAllocInfo.memoryTypeIndex = findMemoryType(textureImageRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
+	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &textureAllocInfo, nullptr, &textureImageMemory));
+	vkBindImageMemory(logicalDevice, textureImage, textureImageMemory, 0);
+
+	//Barrier for syncing transition from LAYOUT_UNDEFINED to OPTIMAL
+	VkImageSubresourceRange textureImageSubresourceRange = {};
+	textureImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	textureImageSubresourceRange.baseMipLevel = 0;
+	textureImageSubresourceRange.baseArrayLayer = 0;
+	textureImageSubresourceRange.layerCount = 1;
+	textureImageSubresourceRange.levelCount = 1;
+
+	VkImageMemoryBarrier textureTransitionBarrier = {};
+	textureTransitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	textureTransitionBarrier.pNext = NULL;
+	textureTransitionBarrier.srcAccessMask = 0;
+	textureTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	textureTransitionBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	textureTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	textureTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	textureTransitionBarrier.image = textureImage;
+	textureTransitionBarrier.subresourceRange = textureImageSubresourceRange;
+
+	VkBufferImageCopy imageCopyInformation = {};
+	imageCopyInformation.bufferOffset = 0;
+	imageCopyInformation.bufferRowLength = 0;
+	imageCopyInformation.bufferImageHeight = 0;
+	imageCopyInformation.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopyInformation.imageSubresource.mipLevel = 0;
+	imageCopyInformation.imageSubresource.baseArrayLayer = 0;
+	imageCopyInformation.imageSubresource.layerCount = 1;
+	imageCopyInformation.imageOffset = { 0, 0, 0 };
+	imageCopyInformation.imageExtent = {
+		(uint32_t)texWidth,
+		(uint32_t)texHeight,
+		1
+	};
+
+	//Transition image to the right format and move it from the tmpbuffer to the GPU side imagebuffer
+	vkBeginCommandBuffer(commandbuffer, &commandBufferBeginInfo);
+	vkCmdPipelineBarrier(commandbuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &textureTransitionBarrier);
+	vkCmdCopyBufferToImage(commandbuffer, tmpImageBuffer.buffer, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyInformation);
+	vkEndCommandBuffer(commandbuffer);
+
+	VkSubmitInfo tmpCommandBufferSubmitInfo = {};
+	tmpCommandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	tmpCommandBufferSubmitInfo.commandBufferCount = 1;
+	tmpCommandBufferSubmitInfo.pCommandBuffers = &commandbuffer;
+	vkQueueSubmit(graphicsQueue, 1, &tmpCommandBufferSubmitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(graphicsQueue);
+	vkDestroyBuffer(logicalDevice, tmpImageBuffer.buffer, nullptr);
+	vkFreeMemory(logicalDevice, tmpImageBuffer.memory, nullptr);
+
+	//translate the image to read optimal
+	makeImageLayotTransition(commandbuffer, graphicsQueue, textureImage, 0, 0, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, commandBufferBeginInfo);
+
+	//Create an imageview to the image
+	VkImageViewCreateInfo imageViewCreateInfo = {};
+	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
+	imageViewCreateInfo.flags = 0;
+	imageViewCreateInfo.image = textureImage;
+	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	imageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
+	imageViewCreateInfo.subresourceRange = textureImageSubresourceRange;
+	VkImageView textureImageView;
+	CHECK_VK_ERROR(vkCreateImageView(logicalDevice, &imageViewCreateInfo, nullptr, &textureImageView));
+	
+	vulkanTexture texture;
+	texture.textureImage = textureImage;
+	texture.textureImageMemory = textureImageMemory;
+	texture.textureImageView = textureImageView;
+	return texture;
+}
+
+VkSampler createSampler(VkDevice logicalDevice) {
+	//Create an sampler to use the imageView
+	VkSamplerCreateInfo samplerCreateInfo = {};
+	samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	samplerCreateInfo.pNext = NULL;
+	samplerCreateInfo.flags = 0;
+	samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+	samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	samplerCreateInfo.mipLodBias = 1.0f;
+	samplerCreateInfo.anisotropyEnable = VK_FALSE;
+	samplerCreateInfo.maxAnisotropy = 1.0f;
+	samplerCreateInfo.compareEnable = VK_FALSE;
+	samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+	samplerCreateInfo.minLod = 0.0f;
+	samplerCreateInfo.maxLod = 0.0f;
+	samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+	samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
+
+	VkSampler textureSampler = {};
+	CHECK_VK_ERROR(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &textureSampler));
+	return textureSampler;
+}
 
 int main() {
 	
@@ -680,146 +853,23 @@ int main() {
 		);
 	fillBufferWithData(logicalDevice, indexBuffer.memory, indexBuffer.requirements.size, indices.data(), sizeof(indices[0]) * indices.size());
 
-	//Load an image to tmpBuffer
-	int texWidth;
-	int texHeight;
-	int texChannels;
-	stbi_uc* pixels = stbi_load("textures/smile.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-	VkDeviceSize imageSize = texWidth * texHeight * 4;
-	VulkanBuffer tmpImageBuffer = createBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-	fillBufferWithData(logicalDevice, tmpImageBuffer.memory, tmpImageBuffer.requirements.size, pixels, imageSize);
-	stbi_image_free(pixels);
-
-	VkImageCreateInfo imageCreateInfo = {};
-	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-	imageCreateInfo.pNext = NULL;
-	imageCreateInfo.flags = 0;
-	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-	imageCreateInfo.extent.width = texWidth;
-	imageCreateInfo.extent.height = texHeight;
-	imageCreateInfo.extent.depth = 1.0f;
-	imageCreateInfo.mipLevels = 1;
-	imageCreateInfo.arrayLayers = 1;
-	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-	imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-	imageCreateInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;;
-	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	imageCreateInfo.queueFamilyIndexCount = 1;
-	imageCreateInfo.pQueueFamilyIndices = &graphicsQueueIndex;
-	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkImage textureImage;
-	VkDeviceMemory textureImageMemory;
-	CHECK_VK_ERROR(vkCreateImage(logicalDevice, &imageCreateInfo, nullptr, &textureImage));
-
-	//Allocate the imageBuffer
-	VkMemoryRequirements textureImageRequirements;
-	vkGetImageMemoryRequirements(logicalDevice, textureImage, &textureImageRequirements);
-	VkMemoryAllocateInfo textureAllocInfo = {};
-	textureAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	textureAllocInfo.pNext = NULL;
-	textureAllocInfo.allocationSize = textureImageRequirements.size;
-	textureAllocInfo.memoryTypeIndex = findMemoryType(textureImageRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, physicalDevice);
-	CHECK_VK_ERROR(vkAllocateMemory(logicalDevice, &textureAllocInfo, nullptr, &textureImageMemory));
-	vkBindImageMemory(logicalDevice, textureImage, textureImageMemory, 0);
-
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	//Barrier for syncing transition from LAYOUT_UNDEFINED to OPTIMAL
-	VkImageSubresourceRange textureImageSubresourceRange = {};
-	textureImageSubresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	textureImageSubresourceRange.baseMipLevel = 0;
-	textureImageSubresourceRange.baseArrayLayer = 0;
-	textureImageSubresourceRange.layerCount = 1;
-	textureImageSubresourceRange.levelCount = 1;
-
-	VkImageMemoryBarrier textureTransitionBarrier = {};
-	textureTransitionBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	textureTransitionBarrier.pNext = NULL;
-	textureTransitionBarrier.srcAccessMask = 0;
-	textureTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	textureTransitionBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	textureTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	textureTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	textureTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	textureTransitionBarrier.image = textureImage;
-	textureTransitionBarrier.subresourceRange = textureImageSubresourceRange;
-
-	VkBufferImageCopy imageCopyInformation = {};
-	imageCopyInformation.bufferOffset = 0;
-	imageCopyInformation.bufferRowLength = 0;
-	imageCopyInformation.bufferImageHeight = 0;
-	imageCopyInformation.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageCopyInformation.imageSubresource.mipLevel = 0;
-	imageCopyInformation.imageSubresource.baseArrayLayer = 0;
-	imageCopyInformation.imageSubresource.layerCount = 1;
-	imageCopyInformation.imageOffset = { 0, 0, 0 };
-	imageCopyInformation.imageExtent = {
-		(uint32_t)texWidth,
-		(uint32_t)texHeight,
-		1
-	};
-
-	//Transition image to the right format and move it from the tmpbuffer to the GPU side imagebuffer
-	vkBeginCommandBuffer(commandBuffers[0], &commandBufferBeginInfo);
-	vkCmdPipelineBarrier(commandBuffers[0], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &textureTransitionBarrier);
-	vkCmdCopyBufferToImage(commandBuffers[0], tmpImageBuffer.buffer, textureImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &imageCopyInformation);
-	vkEndCommandBuffer(commandBuffers[0]);
-
-	VkSubmitInfo tmpCommandBufferSubmitInfo = {};
-	tmpCommandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	tmpCommandBufferSubmitInfo.commandBufferCount = 1;
-	tmpCommandBufferSubmitInfo.pCommandBuffers = &commandBuffers[0];
-	vkQueueSubmit(graphicsQueue, 1, &tmpCommandBufferSubmitInfo, VK_NULL_HANDLE);
-	vkQueueWaitIdle(graphicsQueue);
-	vkDestroyBuffer(logicalDevice, tmpImageBuffer.buffer, nullptr);
-	vkFreeMemory(logicalDevice, tmpImageBuffer.memory, nullptr);
-
-	//Create an imageview to the image
-	VkImageViewCreateInfo imageViewCreateInfo = {};
-	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	imageViewCreateInfo.pNext = NULL;
-	imageViewCreateInfo.flags = 0;
-	imageViewCreateInfo.image = textureImage;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	imageViewCreateInfo.format = VK_FORMAT_R8G8B8A8_SRGB;
-	imageViewCreateInfo.subresourceRange = textureImageSubresourceRange;
-	VkImageView textureImageView;
-	CHECK_VK_ERROR(vkCreateImageView(logicalDevice, &imageViewCreateInfo, nullptr, &textureImageView));
+	//create image, image memory and imageview and store them inside vulkanTexture struct
+	vulkanTexture texture = createTexture(logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 
 	//Create an sampler to use the imageView
-	VkSamplerCreateInfo samplerCreateInfo = {};
-	samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-	samplerCreateInfo.pNext = NULL;
-	samplerCreateInfo.flags = 0;
-	samplerCreateInfo.magFilter = VK_FILTER_LINEAR;
-	samplerCreateInfo.minFilter = VK_FILTER_LINEAR;
-	samplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-	samplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	samplerCreateInfo.mipLodBias = 1.0f;
-	samplerCreateInfo.anisotropyEnable = VK_FALSE;
-	samplerCreateInfo.maxAnisotropy = 1.0f;
-	samplerCreateInfo.compareEnable = VK_FALSE;
-	samplerCreateInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-	samplerCreateInfo.minLod = 0.0f;
-	samplerCreateInfo.maxLod = 0.0f;
-	samplerCreateInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
-	samplerCreateInfo.unnormalizedCoordinates = VK_FALSE;
-
-	VkSampler textureSampler = {};
-	CHECK_VK_ERROR(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &textureSampler));
 	
+
+	VkSampler textureSampler = createSampler(logicalDevice);
 
 	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
 	VkDescriptorPool descriptorPool = createDescriptorPool(logicalDevice, descriptorSetLayout, swapChainImageCount);
 	VkDescriptorSet samplerDescriptorSet = createDescriptorSet(logicalDevice, descriptorSetLayout, descriptorPool);
-	createImageDescriptor(logicalDevice, textureImageView, textureSampler, samplerDescriptorSet);
+	createImageDescriptor(logicalDevice, texture.textureImageView, textureSampler, samplerDescriptorSet);
 
-	
-	//Create an Graphics pipeline
+	//Create Graphics pipeline
 	uint32_t graphicsPipelineStageCount = 2;
 	std::vector<VkShaderModule> shaderModules;
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStageCreateinfos(graphicsPipelineStageCount);
@@ -939,10 +989,10 @@ int main() {
 	vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 
 	vkDestroySampler(logicalDevice, textureSampler, nullptr);
-	vkDestroyImageView(logicalDevice, textureImageView, nullptr);
+	vkDestroyImageView(logicalDevice, texture.textureImageView, nullptr);
 
-	vkDestroyImage(logicalDevice, textureImage, nullptr);
-	vkFreeMemory(logicalDevice, textureImageMemory, nullptr);
+	vkDestroyImage(logicalDevice, texture.textureImage, nullptr);
+	vkFreeMemory(logicalDevice, texture.textureImageMemory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, vertexBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, vertexBuffer.memory, nullptr);
