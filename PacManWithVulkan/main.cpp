@@ -50,6 +50,10 @@ struct VulkanBuffer {
 };
 
 struct ubo {
+	glm::mat4 worldScale;
+};
+
+struct pushConstants {
 	glm::mat4 model;
 };
 
@@ -232,14 +236,19 @@ void createBufferDescriptor(VkDevice logicalDevice, VkDescriptorSet descriptorSe
 	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
 }
 VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, uint32_t swapChainImageCount, VkDescriptorSetLayout descriptorSetLayout) {
+	VkPushConstantRange pushConstantRange = {};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(pushConstants);
+
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCreateInfo.pNext = NULL;
 	pipelineLayoutCreateInfo.flags = 0;
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
-	pipelineLayoutCreateInfo.pushConstantRangeCount = 0;
-	pipelineLayoutCreateInfo.pPushConstantRanges = NULL;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 	
 	VkPipelineLayout pipelineLayout = {};
 	CHECK_VK_ERROR(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutCreateInfo, nullptr, &pipelineLayout));
@@ -906,7 +915,7 @@ int main() {
 	
 	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	ubo testData = {};
-	testData.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.0f, 0.0f));
+	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.4f, 1.0f));
 	fillBufferWithData(logicalDevice,uboBuffer.memory, uboBuffer.requirements.size, &testData, sizeof(testData));
 
 	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
@@ -995,7 +1004,17 @@ int main() {
 		vkCmdBindVertexBuffers(commandBuffers[imageIndex], 0, 1, vertexBuffers, offsets);
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-		vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+		
+		for (int i = 0; i < 2; i++) {
+			pushConstants data = {};
+			data.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f * i, 0.5f * i, 0.0f));
+			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(data), &data);
+			vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+		}
+		
+	
+		
+		
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
 
