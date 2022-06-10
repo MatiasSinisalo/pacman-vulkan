@@ -1074,7 +1074,7 @@ int main() {
 			data.model = position;
 			data.textureIndex = textureIndex;
 			
-			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(data), &data);
+			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT| VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
 			vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		}
 		
@@ -1119,9 +1119,13 @@ int main() {
 
 	vkDestroySampler(logicalDevice, textureSampler, nullptr);
 	vkDestroyImageView(logicalDevice, smileTexture.textureImageView, nullptr);
+	vkDestroyImageView(logicalDevice, arrowTexture.textureImageView, nullptr);
 
 	vkDestroyImage(logicalDevice, smileTexture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, smileTexture.textureImageMemory, nullptr);
+
+	vkDestroyImage(logicalDevice, arrowTexture.textureImage, nullptr);
+	vkFreeMemory(logicalDevice, arrowTexture.textureImageMemory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, uboBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, uboBuffer.memory, nullptr);
