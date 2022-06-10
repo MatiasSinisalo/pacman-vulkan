@@ -27,7 +27,7 @@ Vulkan samples totorial from: https://vulkan.lunarg.com/doc/view/1.2.154.1/windo
 GLFW vulkan guide: https://www.glfw.org/docs/3.3/vulkan_guide.html
 GLFW getiing started: https://www.glfw.org/docs/3.3/quick.html
 c Multiline makros: https://www.geeksforgeeks.org/multiline-macros-in-c/?ref=lbp
-
+accessing an array of images in fragment stage: http://kylehalladay.com/blog/tutorial/vulkan/2018/01/28/Textue-Arrays-Vulkan.html 
 */
 
 #define CHECK_VK_ERROR(f) {\
@@ -55,6 +55,7 @@ struct ubo {
 
 struct pushConstants {
 	glm::mat4 model;
+	int textureIndex;
 };
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
@@ -135,11 +136,10 @@ VkPipelineShaderStageCreateInfo createShaderStage(VkDevice& logicalDevice, VkSha
 VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	VkDescriptorSetLayoutBinding samplerDescriptionSetBinding = {};
 	samplerDescriptionSetBinding.binding = 0;
-	samplerDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
 	samplerDescriptionSetBinding.descriptorCount = 1;
 	samplerDescriptionSetBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	samplerDescriptionSetBinding.pImmutableSamplers = nullptr;
-
 
 	VkDescriptorSetLayoutBinding UBODescriptionSetBinding = {};
 	UBODescriptionSetBinding.binding = 1;
@@ -148,13 +148,20 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	UBODescriptionSetBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 	UBODescriptionSetBinding.pImmutableSamplers = nullptr;
 
-	std::vector<VkDescriptorSetLayoutBinding> bindings = { samplerDescriptionSetBinding , UBODescriptionSetBinding };
+	VkDescriptorSetLayoutBinding sampledImageDescriptionSetBinding = {};
+	sampledImageDescriptionSetBinding.binding = 2;
+	sampledImageDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	sampledImageDescriptionSetBinding.descriptorCount = 2;
+	sampledImageDescriptionSetBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	sampledImageDescriptionSetBinding.pImmutableSamplers = nullptr;
+
+	std::vector<VkDescriptorSetLayoutBinding> bindings = { samplerDescriptionSetBinding , UBODescriptionSetBinding, sampledImageDescriptionSetBinding };
 
 	VkDescriptorSetLayoutCreateInfo samplerDescriptionSetLayotInfo = {};
 	samplerDescriptionSetLayotInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	samplerDescriptionSetLayotInfo.pNext = NULL;
 	samplerDescriptionSetLayotInfo.flags = 0;
-	samplerDescriptionSetLayotInfo.bindingCount = 2;
+	samplerDescriptionSetLayotInfo.bindingCount = 3;
 	samplerDescriptionSetLayotInfo.pBindings = bindings.data();
 
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -164,21 +171,25 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 
 VkDescriptorPool createDescriptorPool(VkDevice logicalDevice, VkDescriptorSetLayout samplerDescriptorLayout, uint32_t swapChainImageCount) {
 	VkDescriptorPoolSize samplerPoolSize = {};
-	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_SAMPLER;
 	samplerPoolSize.descriptorCount = 1;
 
 	VkDescriptorPoolSize descriptorPoolSize = {};
 	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	descriptorPoolSize.descriptorCount = 1;
 
-	std::vector<VkDescriptorPoolSize> sizes = { samplerPoolSize , descriptorPoolSize };
+	VkDescriptorPoolSize textureDescriptorPoolSize = {};
+	textureDescriptorPoolSize.type = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	textureDescriptorPoolSize.descriptorCount = 2;
+
+	std::vector<VkDescriptorPoolSize> sizes = { samplerPoolSize , descriptorPoolSize, textureDescriptorPoolSize };
 
 
 	VkDescriptorPoolCreateInfo descriptorPoolInfo{};
 	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolInfo.poolSizeCount = 2;
 	descriptorPoolInfo.pPoolSizes = sizes.data();
-	descriptorPoolInfo.maxSets = swapChainImageCount * 2;
+	descriptorPoolInfo.maxSets = swapChainImageCount * 3;
 	VkDescriptorPool descriptorPool;
 	vkCreateDescriptorPool(logicalDevice, &descriptorPoolInfo, nullptr, &descriptorPool);
 	return descriptorPool;
@@ -200,26 +211,61 @@ VkDescriptorSet createDescriptorSet(VkDevice logicalDevice, VkDescriptorSetLayou
 	return descriptorSet;
 }
 
-void createImageDescriptor(VkDevice logicalDevice, VkImageView imageView, VkSampler sampler, VkDescriptorSet descriptorSet) {
-	VkDescriptorImageInfo imageDescriptorInfo{};
-	imageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageDescriptorInfo.imageView = imageView;
-	imageDescriptorInfo.sampler = sampler;
+void createImageDescriptor(VkDevice logicalDevice, VkImageView smileImageView, VkImageView arrowImageView, VkSampler sampler, VkDescriptorSet descriptorSet) {
 
-	VkWriteDescriptorSet descriptorWrite = {};
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.pNext = NULL;
-	descriptorWrite.dstSet = descriptorSet;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrite.pImageInfo = &imageDescriptorInfo;
-	descriptorWrite.pBufferInfo; // ignored
-	descriptorWrite.pTexelBufferView; // ignored
+	//info for the sampler
+	VkDescriptorImageInfo samplerDescriptorInfo{};
+	samplerDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	samplerDescriptorInfo.imageView = nullptr;
+	samplerDescriptorInfo.sampler = sampler; //sampler is null, because it gets set on the fragment shader side
 
-	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
+	VkWriteDescriptorSet samplerDescriptorWrite = {};
+	samplerDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	samplerDescriptorWrite.pNext = NULL;
+	samplerDescriptorWrite.dstSet = descriptorSet;
+	samplerDescriptorWrite.dstBinding = 0;
+	samplerDescriptorWrite.dstArrayElement = 0;
+	samplerDescriptorWrite.descriptorCount = 1;
+	samplerDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+	samplerDescriptorWrite.pImageInfo = &samplerDescriptorInfo;
+	samplerDescriptorWrite.pBufferInfo; // ignored
+	samplerDescriptorWrite.pTexelBufferView; // ignored
+
+	//info for the imageview uniform texture2D
+
+	
+	
+	VkDescriptorImageInfo smileImageDescription{};
+	smileImageDescription.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	smileImageDescription.imageView = smileImageView;
+	smileImageDescription.sampler = nullptr; //sampler is null, because it gets set on the fragment shader side	
+	
+	
+	VkDescriptorImageInfo arrowImageDescription{};
+	arrowImageDescription.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	arrowImageDescription.imageView = arrowImageView;
+	arrowImageDescription.sampler = nullptr; //sampler is null, because it gets set on the fragment shader side	
+	
+	std::vector<VkDescriptorImageInfo> imageInfos = { smileImageDescription , arrowImageDescription };
+
+	VkWriteDescriptorSet imageTextureDescriptorWrite = {};
+	imageTextureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	imageTextureDescriptorWrite.pNext = NULL;
+	imageTextureDescriptorWrite.dstSet = descriptorSet;
+	imageTextureDescriptorWrite.dstBinding = 2;
+	imageTextureDescriptorWrite.dstArrayElement = 0;
+	imageTextureDescriptorWrite.descriptorCount = 2;
+	imageTextureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+	imageTextureDescriptorWrite.pImageInfo = imageInfos.data();
+	imageTextureDescriptorWrite.pBufferInfo; // ignored
+	imageTextureDescriptorWrite.pTexelBufferView; // ignored
+
+	std::vector<VkWriteDescriptorSet> writes = { samplerDescriptorWrite , imageTextureDescriptorWrite };
+
+	
+	vkUpdateDescriptorSets(logicalDevice, 2, writes.data(), 0, nullptr);
 }
+
 void createBufferDescriptor(VkDevice logicalDevice, VkDescriptorSet descriptorSet, VkBuffer buffer) {
 	VkDescriptorBufferInfo uboBufferInfo{};
 	uboBufferInfo.buffer = buffer;
@@ -235,9 +281,10 @@ void createBufferDescriptor(VkDevice logicalDevice, VkDescriptorSet descriptorSe
 	descriptorWrite.pBufferInfo = &uboBufferInfo;
 	vkUpdateDescriptorSets(logicalDevice, 1, &descriptorWrite, 0, nullptr);
 }
+
 VkPipelineLayout createPipelineLayout(VkDevice logicalDevice, uint32_t swapChainImageCount, VkDescriptorSetLayout descriptorSetLayout) {
 	VkPushConstantRange pushConstantRange = {};
-	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 	pushConstantRange.offset = 0;
 	pushConstantRange.size = sizeof(pushConstants);
 
@@ -437,12 +484,13 @@ void makeImageLayotTransition(VkCommandBuffer commandbuffer, VkQueue graphicsQue
 
 
 
-vulkanTexture createTexture(VkDevice logicalDevice, VkPhysicalDevice physicalDevice, uint32_t graphicsQueueIndex, VkQueue graphicsQueue, VkCommandBuffer commandbuffer, VkCommandBufferBeginInfo commandBufferBeginInfo) {
+vulkanTexture createTexture(const char *path, VkDevice logicalDevice, VkPhysicalDevice physicalDevice, uint32_t graphicsQueueIndex, VkQueue graphicsQueue, 
+							VkCommandBuffer commandbuffer, VkCommandBufferBeginInfo commandBufferBeginInfo) {
 	//Load an image to tmpBuffer
 	int texWidth;
 	int texHeight;
 	int texChannels;
-	stbi_uc* pixels = stbi_load("textures/smile.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	stbi_uc* pixels = stbi_load(path, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 	VulkanBuffer tmpImageBuffer = createBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	fillBufferWithData(logicalDevice, tmpImageBuffer.memory, tmpImageBuffer.requirements.size, pixels, imageSize);
@@ -579,9 +627,6 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	CHECK_VK_ERROR(vkCreateSampler(logicalDevice, &samplerCreateInfo, nullptr, &textureSampler));
 	return textureSampler;
 }
-
-
-
 
 int main() {
 	
@@ -835,7 +880,7 @@ int main() {
 		imageViewCreateInfo.subresourceRange.levelCount = 1;
 		imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 		imageViewCreateInfo.subresourceRange.layerCount = 1;
-
+		
 		VkImageView imageView = {};
 		CHECK_VK_ERROR(vkCreateImageView(logicalDevice, &imageViewCreateInfo, nullptr, &swapChainImageViews[i]));
 	}
@@ -907,12 +952,13 @@ int main() {
 	VkCommandBufferBeginInfo commandBufferBeginInfo = {};
 	commandBufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	//create image, image memory and imageview and store them inside vulkanTexture struct
-	vulkanTexture texture = createTexture(logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
-
+	//create an sampler to read image data on the gpu side
 	VkSampler textureSampler = createSampler(logicalDevice);
 
-	
+	//create image, image memory and imageview and store them inside vulkanTexture struct
+	vulkanTexture smileTexture = createTexture("textures/smile.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
+	vulkanTexture arrowTexture = createTexture("textures/arrow_green.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
+
 	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	ubo testData = {};
 	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.4f, 1.0f));
@@ -923,7 +969,9 @@ int main() {
 	VkDescriptorSet descriptorSet = createDescriptorSet(logicalDevice, descriptorSetLayout, descriptorPool);
 	
 	createBufferDescriptor(logicalDevice, descriptorSet, uboBuffer.buffer);
-	createImageDescriptor(logicalDevice, texture.textureImageView, textureSampler, descriptorSet);
+	
+	std::vector<VkImageView> imageViews = { smileTexture.textureImageView, arrowTexture.textureImageView};
+	createImageDescriptor(logicalDevice, smileTexture.textureImageView, arrowTexture.textureImageView,textureSampler, descriptorSet);
 
 	//Create Graphics pipeline
 	uint32_t graphicsPipelineStageCount = 2;
@@ -987,6 +1035,13 @@ int main() {
 	
 	VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
 	VkDeviceSize offsets[] = { 0 };
+
+	std::vector<glm::mat4> renderPositions;
+	renderPositions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.0f)));
+	renderPositions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, 0.0f)));
+
+
+
 	while (!glfwWindowShouldClose(window))
 	{
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
@@ -1005,15 +1060,23 @@ int main() {
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		
-		for (int i = 0; i < 2; i++) {
+
+		int textureIndex = 0;
+		for (glm::mat4 position : renderPositions) {
+			if (textureIndex == 0) {
+				textureIndex = 1;
+			}
+			else {
+				textureIndex = 0;
+			}
+
 			pushConstants data = {};
-			data.model = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f * i, 0.5f * i, 0.0f));
+			data.model = position;
+			data.textureIndex = textureIndex;
+			
 			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(data), &data);
 			vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		}
-		
-	
-		
 		
 		vkCmdEndRenderPass(commandBuffers[imageIndex]);
 		vkEndCommandBuffer(commandBuffers[imageIndex]);
@@ -1055,10 +1118,10 @@ int main() {
 	vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 
 	vkDestroySampler(logicalDevice, textureSampler, nullptr);
-	vkDestroyImageView(logicalDevice, texture.textureImageView, nullptr);
+	vkDestroyImageView(logicalDevice, smileTexture.textureImageView, nullptr);
 
-	vkDestroyImage(logicalDevice, texture.textureImage, nullptr);
-	vkFreeMemory(logicalDevice, texture.textureImageMemory, nullptr);
+	vkDestroyImage(logicalDevice, smileTexture.textureImage, nullptr);
+	vkFreeMemory(logicalDevice, smileTexture.textureImageMemory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, uboBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, uboBuffer.memory, nullptr);

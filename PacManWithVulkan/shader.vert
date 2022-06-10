@@ -12,6 +12,7 @@ layout(binding = 1) uniform ubo {
 layout( push_constant ) uniform constants
 {
 	mat4 model;
+    int textureIndex;
 } PushConstants;
 
 
