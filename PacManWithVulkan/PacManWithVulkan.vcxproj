@@ -168,7 +168,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="pipelineVulkan.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="buildshaders.bat" />

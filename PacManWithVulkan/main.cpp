@@ -58,6 +58,13 @@ struct pushConstants {
 	int textureIndex;
 };
 
+struct sprite {
+	glm::mat4 position;
+	int textureIndex;
+};
+
+
+
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -628,6 +635,31 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
+void handleInput(GLFWwindow* window, std::vector<sprite> &gameObjects) {
+	int moveRight = glfwGetKey(window, GLFW_KEY_D);
+	if (moveRight != 0) {
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0005, 0.0, 0.0));
+	}
+
+	int moveLeft = glfwGetKey(window, GLFW_KEY_A);
+	if (moveLeft != 0) {
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(-0.0005, 0.0, 0.0));
+	}
+
+	int moveUp = glfwGetKey(window, GLFW_KEY_W);
+	if (moveUp != 0) {
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, -0.0005, 0.0));
+	}
+
+	int moveDown = glfwGetKey(window, GLFW_KEY_S);
+	if (moveDown != 0) {
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, 0.0005, 0.0));
+	}
+
+
+}
+
+
 int main() {
 	
 	if (!glfwInit())
@@ -1035,15 +1067,30 @@ int main() {
 	
 	VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
 	VkDeviceSize offsets[] = { 0 };
+	
+	
 
-	std::vector<glm::mat4> renderPositions;
-	renderPositions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.0f)));
-	renderPositions.push_back(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, 0.0f)));
-
-
+	std::vector<sprite> gameObjects;
+	int textureIndex = 0;
+	for (int i = 0; i < 2; i++) {
+		sprite newSprite = {};
+		newSprite.position = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f * i, 0.5f * i, 1.0f));
+		if (textureIndex == 0) {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 1;
+		}
+		else {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 0;
+		}
+		gameObjects.push_back(newSprite);
+	}
 
 	while (!glfwWindowShouldClose(window))
 	{
+		handleInput(window, gameObjects);
+
+
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
@@ -1060,20 +1107,10 @@ int main() {
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		
-
-		int textureIndex = 0;
-		for (glm::mat4 position : renderPositions) {
-			if (textureIndex == 0) {
-				textureIndex = 1;
-			}
-			else {
-				textureIndex = 0;
-			}
-
+		for (sprite renderable : gameObjects) {
 			pushConstants data = {};
-			data.model = position;
-			data.textureIndex = textureIndex;
-			
+			data.model = renderable.position;
+			data.textureIndex = renderable.textureIndex;
 			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT| VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
 			vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		}
