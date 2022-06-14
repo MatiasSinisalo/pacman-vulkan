@@ -22,6 +22,9 @@
 #include <algorithm> 
 #include <chrono>
 #include <math.h>
+
+#define MAZEWIDTH 15
+#define MAZEHEIGHT 15
 /*
 Sources:
 huge credits go to the totorial from: https://vulkan-tutorial.com/
@@ -146,7 +149,7 @@ VkPipelineShaderStageCreateInfo createShaderStage(VkDevice& logicalDevice, VkSha
 	return shaderStageCreateInfo;
 }
 
-VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
+VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice, uint32_t textureCount) {
 	VkDescriptorSetLayoutBinding samplerDescriptionSetBinding = {};
 	samplerDescriptionSetBinding.binding = 0;
 	samplerDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
@@ -164,7 +167,7 @@ VkDescriptorSetLayout createDescriptorSetLayout(VkDevice logicalDevice) {
 	VkDescriptorSetLayoutBinding sampledImageDescriptionSetBinding = {};
 	sampledImageDescriptionSetBinding.binding = 2;
 	sampledImageDescriptionSetBinding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	sampledImageDescriptionSetBinding.descriptorCount = 2;
+	sampledImageDescriptionSetBinding.descriptorCount = textureCount;
 	sampledImageDescriptionSetBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	sampledImageDescriptionSetBinding.pImmutableSamplers = nullptr;
 
@@ -224,7 +227,7 @@ VkDescriptorSet createDescriptorSet(VkDevice logicalDevice, VkDescriptorSetLayou
 	return descriptorSet;
 }
 
-void createImageDescriptor(VkDevice logicalDevice, VkImageView smileImageView, VkImageView arrowImageView, VkSampler sampler, VkDescriptorSet descriptorSet) {
+void createImageDescriptor(VkDevice logicalDevice, std::vector<vulkanTexture> &gameTextures, VkSampler sampler, VkDescriptorSet descriptorSet) {
 
 	//info for the sampler
 	VkDescriptorImageInfo samplerDescriptorInfo{};
@@ -245,29 +248,22 @@ void createImageDescriptor(VkDevice logicalDevice, VkImageView smileImageView, V
 	samplerDescriptorWrite.pTexelBufferView; // ignored
 
 	//info for the imageview uniform texture2D
-
+	std::vector<VkDescriptorImageInfo> imageInfos;
+	for (int i = 0; i < gameTextures.size(); i++) {
+		VkDescriptorImageInfo ImageDescription{};
+		ImageDescription.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		ImageDescription.imageView = gameTextures[i].textureImageView;
+		ImageDescription.sampler = nullptr;
+		imageInfos.push_back(ImageDescription);
+	}
 	
-	
-	VkDescriptorImageInfo smileImageDescription{};
-	smileImageDescription.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	smileImageDescription.imageView = smileImageView;
-	smileImageDescription.sampler = nullptr; //sampler is null, because it gets set on the fragment shader side	
-	
-	
-	VkDescriptorImageInfo arrowImageDescription{};
-	arrowImageDescription.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	arrowImageDescription.imageView = arrowImageView;
-	arrowImageDescription.sampler = nullptr; //sampler is null, because it gets set on the fragment shader side	
-	
-	std::vector<VkDescriptorImageInfo> imageInfos = { smileImageDescription , arrowImageDescription };
-
 	VkWriteDescriptorSet imageTextureDescriptorWrite = {};
 	imageTextureDescriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	imageTextureDescriptorWrite.pNext = NULL;
 	imageTextureDescriptorWrite.dstSet = descriptorSet;
 	imageTextureDescriptorWrite.dstBinding = 2;
 	imageTextureDescriptorWrite.dstArrayElement = 0;
-	imageTextureDescriptorWrite.descriptorCount = 2;
+	imageTextureDescriptorWrite.descriptorCount = imageInfos.size();
 	imageTextureDescriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
 	imageTextureDescriptorWrite.pImageInfo = imageInfos.data();
 	imageTextureDescriptorWrite.pBufferInfo; // ignored
@@ -989,23 +985,27 @@ int main() {
 	//create an sampler to read image data on the gpu side
 	VkSampler textureSampler = createSampler(logicalDevice);
 
+
+
 	//create image, image memory and imageview and store them inside vulkanTexture struct
 	vulkanTexture smileTexture = createTexture("textures/smile.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 	vulkanTexture arrowTexture = createTexture("textures/arrow_green.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
-
+	vulkanTexture wallTexture = createTexture("textures/wall.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);	
+	std::vector<vulkanTexture> gameTextures = {smileTexture , arrowTexture, wallTexture};
+	
+	
 	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	ubo testData = {};
-	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.4f, 1.0f));
+	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f));
 	fillBufferWithData(logicalDevice,uboBuffer.memory, uboBuffer.requirements.size, &testData, sizeof(testData));
 
-	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice);
+	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice, gameTextures.size());
 	VkDescriptorPool descriptorPool = createDescriptorPool(logicalDevice, descriptorSetLayout, swapChainImageCount);
 	VkDescriptorSet descriptorSet = createDescriptorSet(logicalDevice, descriptorSetLayout, descriptorPool);
 	
 	createBufferDescriptor(logicalDevice, descriptorSet, uboBuffer.buffer);
 	
-	std::vector<VkImageView> imageViews = { smileTexture.textureImageView, arrowTexture.textureImageView};
-	createImageDescriptor(logicalDevice, smileTexture.textureImageView, arrowTexture.textureImageView,textureSampler, descriptorSet);
+	createImageDescriptor(logicalDevice, gameTextures, textureSampler, descriptorSet);
 
 	//Create Graphics pipeline
 	uint32_t graphicsPipelineStageCount = 2;
@@ -1070,7 +1070,21 @@ int main() {
 	VkBuffer vertexBuffers[] = { vertexBuffer.buffer };
 	VkDeviceSize offsets[] = { 0 };
 	
+
+
 	
+	sprite mazeStructure[MAZEHEIGHT][MAZEWIDTH];
+	for (int i = 0; i < MAZEHEIGHT; i++) {
+		for (int j = 0; j < MAZEWIDTH; j++) {
+			sprite mazePart = {};
+			mazePart.position = glm::translate(glm::mat4(1.0f), glm::vec3(-9.0f + i, -9.0f + j, 1.0f));
+			mazePart.textureIndex = 2;
+			mazeStructure[i][j] = mazePart;
+		
+		}
+	}
+
+
 
 	std::vector<sprite> gameObjects;
 	int textureIndex = 0;
@@ -1085,7 +1099,7 @@ int main() {
 			newSprite.textureIndex = textureIndex;
 			textureIndex = 0;
 		}
-		gameObjects.push_back(newSprite);
+		//gameObjects.push_back(newSprite);
 	}
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
@@ -1112,6 +1126,18 @@ int main() {
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		
+		for (int i = 0; i < MAZEHEIGHT; i++) {
+			for (int j = 0; j < MAZEWIDTH; j++) {
+				pushConstants data = {};
+				data.model = mazeStructure[i][j].position;
+				data.textureIndex = mazeStructure[i][j].textureIndex;
+				vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
+				vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+
+			}
+		}
+
 		for (sprite renderable : gameObjects) {
 			pushConstants data = {};
 			data.model = renderable.position;
@@ -1154,7 +1180,7 @@ int main() {
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
+		//std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
 
 
 	}
@@ -1167,12 +1193,16 @@ int main() {
 	vkDestroySampler(logicalDevice, textureSampler, nullptr);
 	vkDestroyImageView(logicalDevice, smileTexture.textureImageView, nullptr);
 	vkDestroyImageView(logicalDevice, arrowTexture.textureImageView, nullptr);
+	vkDestroyImageView(logicalDevice, wallTexture.textureImageView, nullptr);
 
 	vkDestroyImage(logicalDevice, smileTexture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, smileTexture.textureImageMemory, nullptr);
 
 	vkDestroyImage(logicalDevice, arrowTexture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, arrowTexture.textureImageMemory, nullptr);
+
+	vkDestroyImage(logicalDevice, wallTexture.textureImage, nullptr);
+	vkFreeMemory(logicalDevice, wallTexture.textureImageMemory, nullptr);
 
 	vkDestroyBuffer(logicalDevice, uboBuffer.buffer, nullptr);
 	vkFreeMemory(logicalDevice, uboBuffer.memory, nullptr);
