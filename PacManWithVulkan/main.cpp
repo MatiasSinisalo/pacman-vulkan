@@ -20,6 +20,8 @@
 
 #include <vector>
 #include <algorithm> 
+#include <chrono>
+#include <math.h>
 /*
 Sources:
 huge credits go to the totorial from: https://vulkan-tutorial.com/
@@ -63,7 +65,11 @@ struct sprite {
 	int textureIndex;
 };
 
-
+struct vulkanTexture {
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+	VkImageView textureImageView;
+};
 
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties, VkPhysicalDevice physicalDevice) {
 	VkPhysicalDeviceMemoryProperties memProperties;
@@ -445,11 +451,7 @@ VkPipeline createPipeline(VkDevice logicalDevice, VkPipelineLayout pipelineLayou
 	return graphicsPipeline;
 }
 
-struct vulkanTexture {
-	VkImage textureImage;
-	VkDeviceMemory textureImageMemory;
-	VkImageView textureImageView;
-};
+
 
 void makeImageLayotTransition(VkCommandBuffer commandbuffer, VkQueue graphicsQueue, VkImage textureImage, VkAccessFlags srcAccessMask, 
 							  VkAccessFlags dstAccessMask, VkImageLayout oldLayout, VkImageLayout newLayout, VkCommandBufferBeginInfo commandBufferBeginInfo) {
@@ -635,27 +637,27 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
-void handleInput(GLFWwindow* window, std::vector<sprite> &gameObjects) {
+void handleInput(GLFWwindow* window, std::vector<sprite> &gameObjects, float ellapsed) {
+	float ellapsedInSeconds = (ellapsed / pow(10, 6));
 	int moveRight = glfwGetKey(window, GLFW_KEY_D);
 	if (moveRight != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0005, 0.0, 0.0));
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(10.0f * ellapsedInSeconds, 0.0, 0.0));
 	}
 
 	int moveLeft = glfwGetKey(window, GLFW_KEY_A);
 	if (moveLeft != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(-0.0005, 0.0, 0.0));
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(-10.0f * ellapsedInSeconds, 0.0, 0.0));
 	}
 
 	int moveUp = glfwGetKey(window, GLFW_KEY_W);
 	if (moveUp != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, -0.0005, 0.0));
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, -10.0f * ellapsedInSeconds, 0.0));
 	}
 
 	int moveDown = glfwGetKey(window, GLFW_KEY_S);
 	if (moveDown != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, 0.0005, 0.0));
+		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, 10.0f * ellapsedInSeconds, 0.0));
 	}
-
 
 }
 
@@ -1085,12 +1087,15 @@ int main() {
 		}
 		gameObjects.push_back(newSprite);
 	}
-
+	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 	while (!glfwWindowShouldClose(window))
 	{
-		handleInput(window, gameObjects);
+		
+		handleInput(window, gameObjects, ellapsed);
 
-
+		begin = std::chrono::steady_clock::now();
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
@@ -1147,6 +1152,11 @@ int main() {
 		
 		//advance the frame forwards to look at the correct semaphore and fence
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
+		end = std::chrono::steady_clock::now();
+		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+		std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
+
+
 	}
 
 	vkQueueWaitIdle(graphicsQueue);
