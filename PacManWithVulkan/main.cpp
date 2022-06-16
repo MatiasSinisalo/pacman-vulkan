@@ -1148,15 +1148,12 @@ int main() {
 	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 	while (!glfwWindowShouldClose(window))
 	{
-		static auto startTime = std::chrono::high_resolution_clock::now();
-
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float passedTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-		//std::cout << passedTime << "\n";
+		end = std::chrono::steady_clock::now();
+		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+		//	std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
 		handleInput(window, gameObjects, ellapsed);
 		
 		
-		begin = std::chrono::steady_clock::now();
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
@@ -1225,10 +1222,9 @@ int main() {
 		
 		//advance the frame forwards to look at the correct semaphore and fence
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
-		end = std::chrono::steady_clock::now();
-		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-	//	std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
-
+		
+	
+		begin = end;
 
 	}
 
