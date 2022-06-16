@@ -23,6 +23,7 @@
 #include <chrono>
 #include <math.h>
 
+
 #define MAZEWIDTH 1
 #define MAZEHEIGHT 1
 /*
@@ -639,23 +640,12 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
-
-void setGameObjectPosition(gameObject object, glm::vec3 newPosition) {
-
-
-
-
-};
-
-
-
-
 void colliding(gameObject first, gameObject second) {
-	std::cout << first.pos.x << ", " << first.pos.y;
-	if ((first.pos.x + first.scale.x) >= (second.pos.x - second.scale.x) &&
-		(first.pos.y - first.scale.y) <= (second.pos.y + second.scale.y) &&
-		(first.pos.x - first.scale.x) <= (second.pos.x + second.scale.x) &&
-		(first.pos.y + first.scale.y) >= (second.pos.y - second.scale.y)
+	std::cout << first.pos.x << ", " << first.pos.y << "|";
+	std::cout << second.pos.x << ", " << second.pos.y;
+	if ((first.pos.x + 0.5f * first.scale.x) > (second.pos.x - 0.5f * second.scale.x) && (first.pos.x - 0.5f * first.scale.x) < (second.pos.x + 0.5f * second.scale.x) &&
+		(first.pos.y + 0.5f * first.scale.y) > (second.pos.y - 0.5f * second.scale.y) && (first.pos.y - 0.5f * first.scale.y) < (second.pos.y + 0.5f * second.scale.y)
+		
 		) {
 		std::cout << ", collision! ";
 	
@@ -1133,15 +1123,15 @@ int main() {
 	for (int i = 0; i < 2; i++) {
 		gameObject newGameObject = {};
 		newGameObject.pos = glm::vec3(0.0f + i, 0.0f, 1.0f);
-		newGameObject.scale = glm::vec3(0.5f, 0.5f, 1.0f);
+		newGameObject.scale = glm::vec3(1.5f, 1.5f, 1.0f);
 
 		sprite newSprite = {};
 		newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
-		newSprite.model = glm::translate(newSprite.model, newGameObject.pos);
-	
-		
-		
-		
+		glm::vec3 newPos = newGameObject.pos;
+		newPos.x *= 1 / newGameObject.scale.x;
+		newPos.y *= 1 / newGameObject.scale.y;
+		newSprite.model = glm::translate(newSprite.model, newPos);
+
 		if (textureIndex == 0) {
 			newSprite.textureIndex = textureIndex;
 			textureIndex = 1;
