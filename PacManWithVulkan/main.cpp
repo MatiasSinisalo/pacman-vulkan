@@ -23,8 +23,8 @@
 #include <chrono>
 #include <math.h>
 
-#define MAZEWIDTH 15
-#define MAZEHEIGHT 15
+#define MAZEWIDTH 1
+#define MAZEHEIGHT 1
 /*
 Sources:
 huge credits go to the totorial from: https://vulkan-tutorial.com/
@@ -64,8 +64,14 @@ struct pushConstants {
 };
 
 struct sprite {
-	glm::mat4 position;
+	glm::mat4 model;
 	int textureIndex;
+};
+
+struct gameObject {
+	glm::vec3 pos;
+	glm::vec3 scale;
+	sprite drawObject;
 };
 
 struct vulkanTexture {
@@ -633,28 +639,60 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
-void handleInput(GLFWwindow* window, std::vector<sprite> &gameObjects, float ellapsed) {
+
+void setGameObjectPosition(gameObject object, glm::vec3 newPosition) {
+
+
+
+
+};
+
+
+
+
+void colliding(gameObject first, gameObject second) {
+	std::cout << first.pos.x << ", " << first.pos.y;
+	if ((first.pos.x + first.scale.x) >= (second.pos.x - second.scale.x) &&
+		(first.pos.y - first.scale.y) <= (second.pos.y + second.scale.y) &&
+		(first.pos.x - first.scale.x) <= (second.pos.x + second.scale.x) &&
+		(first.pos.y + first.scale.y) >= (second.pos.y - second.scale.y)
+		) {
+		std::cout << ", collision! ";
+	
+	}
+	else {
+		//std::cout << "no collision!\n";
+	}
+	std::cout << "\n";
+}
+
+void handleInput(GLFWwindow* window, std::vector<gameObject> &gameObjects, float ellapsed) {
 	float ellapsedInSeconds = (ellapsed / pow(10, 6));
 	int moveRight = glfwGetKey(window, GLFW_KEY_D);
+	glm::vec3 oldpos = gameObjects[0].pos;
 	if (moveRight != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(10.0f * ellapsedInSeconds, 0.0, 0.0));
+		gameObjects[0].pos.x += 10.0f * ellapsedInSeconds;
 	}
 
 	int moveLeft = glfwGetKey(window, GLFW_KEY_A);
 	if (moveLeft != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(-10.0f * ellapsedInSeconds, 0.0, 0.0));
+		gameObjects[0].pos.x -= 10.0f * ellapsedInSeconds;
 	}
 
 	int moveUp = glfwGetKey(window, GLFW_KEY_W);
 	if (moveUp != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, -10.0f * ellapsedInSeconds, 0.0));
+		gameObjects[0].pos.y -= 10.0f * ellapsedInSeconds;
 	}
 
 	int moveDown = glfwGetKey(window, GLFW_KEY_S);
 	if (moveDown != 0) {
-		gameObjects[0].position = glm::translate(gameObjects[0].position, glm::vec3(0.0, 10.0f * ellapsedInSeconds, 0.0));
+		gameObjects[0].pos.y += 10.0f * ellapsedInSeconds;
 	}
-
+	glm::vec3 newPos = -(oldpos - gameObjects[0].pos);
+	newPos.x *= 1 / gameObjects[0].scale.x;
+	newPos.y *= 1 / gameObjects[0].scale.y;
+	gameObjects[0].drawObject.model = glm::translate(gameObjects[0].drawObject.model, newPos);
+	colliding(gameObjects[0], gameObjects[1]);
 }
 
 
@@ -996,7 +1034,8 @@ int main() {
 	
 	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
 	ubo testData = {};
-	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f, 0.1f, 1.0f));
+	testData.worldScale = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.33, 1.0f));
+	testData.worldScale = glm::scale(testData.worldScale, glm::vec3(0.1f, 0.1, 1.0f));
 	fillBufferWithData(logicalDevice,uboBuffer.memory, uboBuffer.requirements.size, &testData, sizeof(testData));
 
 	VkDescriptorSetLayout descriptorSetLayout = createDescriptorSetLayout(logicalDevice, gameTextures.size());
@@ -1077,7 +1116,10 @@ int main() {
 	for (int i = 0; i < MAZEHEIGHT; i++) {
 		for (int j = 0; j < MAZEWIDTH; j++) {
 			sprite mazePart = {};
-			mazePart.position = glm::translate(glm::mat4(1.0f), glm::vec3(-9.0f + i, -9.0f + j, 1.0f));
+			mazePart.model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
+			mazePart.model = glm::translate(mazePart.model, glm::vec3(0.0f + i, 0.0f + j, 1.0f));
+			
+
 			mazePart.textureIndex = 2;
 			mazeStructure[i][j] = mazePart;
 		
@@ -1086,11 +1128,20 @@ int main() {
 
 
 
-	std::vector<sprite> gameObjects;
+	std::vector<gameObject> gameObjects;
 	int textureIndex = 0;
 	for (int i = 0; i < 2; i++) {
+		gameObject newGameObject = {};
+		newGameObject.pos = glm::vec3(0.0f + i, 0.0f, 1.0f);
+		newGameObject.scale = glm::vec3(0.5f, 0.5f, 1.0f);
+
 		sprite newSprite = {};
-		newSprite.position = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f * i, 0.5f * i, 1.0f));
+		newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
+		newSprite.model = glm::translate(newSprite.model, newGameObject.pos);
+	
+		
+		
+		
 		if (textureIndex == 0) {
 			newSprite.textureIndex = textureIndex;
 			textureIndex = 1;
@@ -1099,16 +1150,22 @@ int main() {
 			newSprite.textureIndex = textureIndex;
 			textureIndex = 0;
 		}
-		//gameObjects.push_back(newSprite);
+		newGameObject.drawObject = newSprite;
+		gameObjects.push_back(newGameObject);
 	}
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 	while (!glfwWindowShouldClose(window))
 	{
-		
-		handleInput(window, gameObjects, ellapsed);
+		static auto startTime = std::chrono::high_resolution_clock::now();
 
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float passedTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+		//std::cout << passedTime << "\n";
+		handleInput(window, gameObjects, ellapsed);
+		
+		
 		begin = std::chrono::steady_clock::now();
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 
@@ -1129,7 +1186,7 @@ int main() {
 		for (int i = 0; i < MAZEHEIGHT; i++) {
 			for (int j = 0; j < MAZEWIDTH; j++) {
 				pushConstants data = {};
-				data.model = mazeStructure[i][j].position;
+				data.model = mazeStructure[i][j].model;
 				data.textureIndex = mazeStructure[i][j].textureIndex;
 				vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
 				vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
@@ -1138,10 +1195,10 @@ int main() {
 			}
 		}
 
-		for (sprite renderable : gameObjects) {
+		for (gameObject renderable : gameObjects) {
 			pushConstants data = {};
-			data.model = renderable.position;
-			data.textureIndex = renderable.textureIndex;
+			data.model = renderable.drawObject.model;
+			data.textureIndex = renderable.drawObject.textureIndex;
 			vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT| VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
 			vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 		}
@@ -1180,7 +1237,7 @@ int main() {
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		//std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
+	//	std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
 
 
 	}
