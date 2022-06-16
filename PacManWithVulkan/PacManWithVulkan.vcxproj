@@ -167,6 +167,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="game.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -175,6 +176,7 @@
     <None Include="shader.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="globalRenderStructures.h" />
     <ClInclude Include="shader_frag.spv.h" />
     <ClInclude Include="shader_vert.spv.h" />
   </ItemGroup>

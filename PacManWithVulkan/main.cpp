@@ -9,8 +9,7 @@
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -22,10 +21,9 @@
 #include <algorithm> 
 #include <chrono>
 #include <math.h>
+#include "game.cpp"
 
 
-#define MAZEWIDTH 1
-#define MAZEHEIGHT 1
 /*
 Sources:
 huge credits go to the totorial from: https://vulkan-tutorial.com/
@@ -64,16 +62,6 @@ struct pushConstants {
 	int textureIndex;
 };
 
-struct sprite {
-	glm::mat4 model;
-	int textureIndex;
-};
-
-struct gameObject {
-	glm::vec3 pos;
-	glm::vec3 scale;
-	sprite drawObject;
-};
 
 struct vulkanTexture {
 	VkImage textureImage;
@@ -640,52 +628,6 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
-void colliding(gameObject first, gameObject second) {
-	std::cout << first.pos.x << ", " << first.pos.y << "|";
-	std::cout << second.pos.x << ", " << second.pos.y;
-	if ((first.pos.x + 0.5f * first.scale.x) > (second.pos.x - 0.5f * second.scale.x) && (first.pos.x - 0.5f * first.scale.x) < (second.pos.x + 0.5f * second.scale.x) &&
-		(first.pos.y + 0.5f * first.scale.y) > (second.pos.y - 0.5f * second.scale.y) && (first.pos.y - 0.5f * first.scale.y) < (second.pos.y + 0.5f * second.scale.y)
-		
-		) {
-		std::cout << ", collision! ";
-	
-	}
-	else {
-		//std::cout << "no collision!\n";
-	}
-	std::cout << "\n";
-}
-
-void handleInput(GLFWwindow* window, std::vector<gameObject> &gameObjects, float ellapsed) {
-	float ellapsedInSeconds = (ellapsed / pow(10, 6));
-	int moveRight = glfwGetKey(window, GLFW_KEY_D);
-	glm::vec3 oldpos = gameObjects[0].pos;
-	if (moveRight != 0) {
-		gameObjects[0].pos.x += 10.0f * ellapsedInSeconds;
-	}
-
-	int moveLeft = glfwGetKey(window, GLFW_KEY_A);
-	if (moveLeft != 0) {
-		gameObjects[0].pos.x -= 10.0f * ellapsedInSeconds;
-	}
-
-	int moveUp = glfwGetKey(window, GLFW_KEY_W);
-	if (moveUp != 0) {
-		gameObjects[0].pos.y -= 10.0f * ellapsedInSeconds;
-	}
-
-	int moveDown = glfwGetKey(window, GLFW_KEY_S);
-	if (moveDown != 0) {
-		gameObjects[0].pos.y += 10.0f * ellapsedInSeconds;
-	}
-	glm::vec3 newPos = -(oldpos - gameObjects[0].pos);
-	newPos.x *= 1 / gameObjects[0].scale.x;
-	newPos.y *= 1 / gameObjects[0].scale.y;
-	gameObjects[0].drawObject.model = glm::translate(gameObjects[0].drawObject.model, newPos);
-	colliding(gameObjects[0], gameObjects[1]);
-}
-
-
 int main() {
 	
 	if (!glfwInit())
@@ -1013,8 +955,6 @@ int main() {
 	//create an sampler to read image data on the gpu side
 	VkSampler textureSampler = createSampler(logicalDevice);
 
-
-
 	//create image, image memory and imageview and store them inside vulkanTexture struct
 	vulkanTexture smileTexture = createTexture("textures/smile.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 	vulkanTexture arrowTexture = createTexture("textures/arrow_green.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
@@ -1100,49 +1040,9 @@ int main() {
 	VkDeviceSize offsets[] = { 0 };
 	
 
+	Game pacManGame;
+	pacManGame.createGameObjects();
 
-	
-	sprite mazeStructure[MAZEHEIGHT][MAZEWIDTH];
-	for (int i = 0; i < MAZEHEIGHT; i++) {
-		for (int j = 0; j < MAZEWIDTH; j++) {
-			sprite mazePart = {};
-			mazePart.model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
-			mazePart.model = glm::translate(mazePart.model, glm::vec3(0.0f + i, 0.0f + j, 1.0f));
-			
-
-			mazePart.textureIndex = 2;
-			mazeStructure[i][j] = mazePart;
-		
-		}
-	}
-
-
-
-	std::vector<gameObject> gameObjects;
-	int textureIndex = 0;
-	for (int i = 0; i < 2; i++) {
-		gameObject newGameObject = {};
-		newGameObject.pos = glm::vec3(0.0f + i, 0.0f, 1.0f);
-		newGameObject.scale = glm::vec3(1.5f, 1.5f, 1.0f);
-
-		sprite newSprite = {};
-		newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
-		glm::vec3 newPos = newGameObject.pos;
-		newPos.x *= 1 / newGameObject.scale.x;
-		newPos.y *= 1 / newGameObject.scale.y;
-		newSprite.model = glm::translate(newSprite.model, newPos);
-
-		if (textureIndex == 0) {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 1;
-		}
-		else {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 0;
-		}
-		newGameObject.drawObject = newSprite;
-		gameObjects.push_back(newGameObject);
-	}
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
@@ -1150,16 +1050,13 @@ int main() {
 	{
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		//	std::cout << "Time difference = " << ellapsed << " microseconds" << std::endl;
-		handleInput(window, gameObjects, ellapsed);
+		
+		pacManGame.handleInput(window, pacManGame.allGameObjects, ellapsed);
 		
 		
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
-
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
-
 		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
-
 		vkResetCommandBuffer(commandBuffers[imageIndex], 0);
 		vkBeginCommandBuffer(commandBuffers[imageIndex], &commandBufferBeginInfo);
 		vkCmdBindPipeline(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, triangleGraphicsPipeline);
@@ -1170,19 +1067,7 @@ int main() {
 		vkCmdBindIndexBuffer(commandBuffers[imageIndex], indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT16);
 		vkCmdBindDescriptorSets(commandBuffers[imageIndex], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 		
-		for (int i = 0; i < MAZEHEIGHT; i++) {
-			for (int j = 0; j < MAZEWIDTH; j++) {
-				pushConstants data = {};
-				data.model = mazeStructure[i][j].model;
-				data.textureIndex = mazeStructure[i][j].textureIndex;
-				vkCmdPushConstants(commandBuffers[imageIndex], pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(data), &data);
-				vkCmdDrawIndexed(commandBuffers[imageIndex], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-
-
-			}
-		}
-
-		for (gameObject renderable : gameObjects) {
+		for (gameObject renderable : pacManGame.allGameObjects) {
 			pushConstants data = {};
 			data.model = renderable.drawObject.model;
 			data.textureIndex = renderable.drawObject.textureIndex;
@@ -1203,29 +1088,23 @@ int main() {
 		submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
-		
 		vkResetFences(logicalDevice, 1, &inFlightFences[imageIndex]);
 		vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[imageIndex]);
-
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
-		
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = &swapChain;
 		presentInfo.pImageIndices = &imageIndex;
-
 		vkQueuePresentKHR(presentQueue, &presentInfo);
-
 		glfwPollEvents();
 		
 		//advance the frame forwards to look at the correct semaphore and fence
 		imageIndex = (imageIndex + 1) % swapChainImageCount;
 		
-	
+		//update loop clock
 		begin = end;
-
 	}
 
 	vkQueueWaitIdle(graphicsQueue);

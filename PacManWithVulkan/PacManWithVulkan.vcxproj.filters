@@ -21,6 +21,9 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="game.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="shader.vert">
@@ -39,6 +42,9 @@
     </ClInclude>
     <ClInclude Include="shader_vert.spv.h">
       <Filter>shaders</Filter>
+    </ClInclude>
+    <ClInclude Include="globalRenderStructures.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
