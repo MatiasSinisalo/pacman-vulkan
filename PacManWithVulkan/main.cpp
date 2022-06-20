@@ -959,7 +959,9 @@ int main() {
 	vulkanTexture smileTexture = createTexture("textures/smile.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 	vulkanTexture arrowTexture = createTexture("textures/arrow_green.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
 	vulkanTexture wallTexture = createTexture("textures/wall.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);	
-	std::vector<vulkanTexture> gameTextures = {smileTexture , arrowTexture, wallTexture};
+	vulkanTexture blackBox = createTexture("textures/black_box.jpg", logicalDevice, physicalDevice, graphicsQueueIndex, graphicsQueue, commandBuffers[0], commandBufferBeginInfo);
+
+	std::vector<vulkanTexture> gameTextures = {smileTexture , arrowTexture, wallTexture, blackBox};
 	
 	
 	VulkanBuffer uboBuffer = createBuffer(physicalDevice, logicalDevice, sizeof(ubo), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_SHARING_MODE_EXCLUSIVE, (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
@@ -1051,7 +1053,9 @@ int main() {
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 		
-		pacManGame.handleInput(window, pacManGame.allGameObjects, ellapsed);
+		pacManGame.updateGame(window, ellapsed);
+
+	
 		
 		
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
@@ -1116,9 +1120,13 @@ int main() {
 	vkDestroyImageView(logicalDevice, smileTexture.textureImageView, nullptr);
 	vkDestroyImageView(logicalDevice, arrowTexture.textureImageView, nullptr);
 	vkDestroyImageView(logicalDevice, wallTexture.textureImageView, nullptr);
+	vkDestroyImageView(logicalDevice, blackBox.textureImageView, nullptr);
 
 	vkDestroyImage(logicalDevice, smileTexture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, smileTexture.textureImageMemory, nullptr);
+
+	vkDestroyImage(logicalDevice, blackBox.textureImage, nullptr);
+	vkFreeMemory(logicalDevice, blackBox.textureImageMemory, nullptr);
 
 	vkDestroyImage(logicalDevice, arrowTexture.textureImage, nullptr);
 	vkFreeMemory(logicalDevice, arrowTexture.textureImageMemory, nullptr);
