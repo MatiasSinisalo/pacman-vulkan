@@ -27,6 +27,7 @@ public:
 	};
 
 	std::vector<gameObject> allGameObjects;
+	std::vector<int> coinIndexes;
 	std::vector<int> mazeWallIndexes;
 	std::vector<glm::vec3> ghostPath;
 	gameObject *player;
@@ -64,11 +65,12 @@ public:
 	 const float mazeStartPosX = -7.0f;
 	 const float mazeStartPosY = -7.0f;
 	 const float mazeGridScale = 0.55f;
-	 
+	 int points = 0;
 
 	void createGameObjects() {
 
 		bool isWall = false;
+		//create the maze structure
 		for (int j = 0; j < MAZEHEIGHT; j++) {
 			for (int i = 0; i < MAZEWIDTH; i++) {
 				gameObject newGameObject = {};
@@ -100,7 +102,33 @@ public:
 				
 			}
 		}
-	
+		//put coins to the structure
+		int test = 0;
+		for (int j = 0; j < MAZEHEIGHT; j++) {
+			for (int i = 0; i < MAZEWIDTH; i++) {
+				
+				if (mazeLayout[j][i] == '.') {
+					gameObject newGameObject = {};
+					newGameObject.pos = allGameObjects[mazeInformation[j][i].gameObjectIndex].pos;
+					newGameObject.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+					sprite newSprite = {};
+					newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
+					glm::vec3 newPos = newGameObject.pos;
+					newPos.x *= 1 / newGameObject.scale.x;
+					newPos.y *= 1 / newGameObject.scale.y;
+					newSprite.model = glm::translate(newSprite.model, newPos);
+					newSprite.textureIndex = 4;
+					newGameObject.drawObject = newSprite;
+					
+					allGameObjects.push_back(newGameObject);
+					coinIndexes.push_back(allGameObjects.size()-1);
+					test++;
+				}
+			}
+		}
+
+
+
 		
 		int textureIndex = 0;
 		
@@ -219,10 +247,26 @@ public:
 			}	
 		}
 
+		
+
 		if (colliding(*player, *ghost)) {
 			player->pos = oldpos;
 		}
 
+		for (int coinIndex : coinIndexes) {
+			gameObject *object = &allGameObjects[coinIndex];
+
+
+			if (colliding(*player, *object))
+			{
+				points += 1;
+				//this is just a placeholder until gameobject destruction is implemented
+				object->pos = glm::vec3(1000.0f, 1000.0f, 1.0f);
+				object->pos.x *= 1 / object->scale.x;
+				object->pos.y *= 1 / object->scale.y;
+				object->drawObject.model = glm::translate(object->drawObject.model, object->pos);
+			}
+		}
 
 		glm::vec3 newPos = -(oldpos - player->pos);
 		newPos.x *= 1 / player->scale.x;
@@ -393,7 +437,7 @@ public:
 		else {
 			moveGhostToPosition(ghost, player->pos, ellapsed);
 		}
-		std::cout << "Player position: " << player->pos.x << ", " << player->pos.y << "\n";
+		std::cout << "Player position: " << player->pos.x << ", " << player->pos.y << "  |  " << "Points: " << points << "\n";
 		
 		
 	}
