@@ -1051,10 +1051,17 @@ int main() {
 	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 	while (!glfwWindowShouldClose(window))
 	{
+		static auto startTime = std::chrono::high_resolution_clock::now();
+
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+
+
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 		
-		pacManGame.updateGame(window, ellapsed);
+		pacManGame.updateGame(window, ellapsed, time);
 
 	
 		

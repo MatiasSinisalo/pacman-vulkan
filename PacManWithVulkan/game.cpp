@@ -17,7 +17,6 @@ public:
 	struct gridCell {
 		bool isWall;
 		bool hasPlayer;
-		bool hasGhost;
 		int gameObjectIndex;
 	};
 
@@ -26,13 +25,25 @@ public:
 		int x;
 	};
 
+	struct ghost {
+		int ghostGameObjectIndex;
+		gridPos ghostGridPos;
+		gridPos target;
+		bool canMove;
+		std::vector<glm::vec3> ghostPath;
+	};
+
 	std::vector<gameObject> allGameObjects;
+	std::vector<ghost> allGhosts;
 	std::vector<int> coinIndexes;
 	std::vector<int> mazeWallIndexes;
-	std::vector<glm::vec3> ghostPath;
-	gameObject *player;
+	
+	
+	int playerIndex;
 	gridPos playerGridPos;
-	gridPos ghostGridPos;
+
+	
+
 	gridCell mazeInformation[MAZEHEIGHT][MAZEWIDTH] = {};
 	const char mazeLayout[MAZEHEIGHT][MAZEWIDTH] ={"#####################",
 									"#.........#.........#",
@@ -46,7 +57,7 @@ public:
 									"#####.###.#.###.#####",
 									"#####.#.......#.#####",
 									"#####.#.##.##.#.#####",
-									"#####.#.#...#.#.#####",
+									"#####.#.#,,,#.#.#####",
 									"#.......#####.......#",
 									"#####.#.......#.#####", 
 									"#####.#.#####.#.#####", 
@@ -61,7 +72,7 @@ public:
 									"#.#######.#.#######.#", 
 									"#...................#", 
 									"#####################"};
-	gameObject* ghost;
+	
 	 const float mazeStartPosX = -7.0f;
 	 const float mazeStartPosY = -7.0f;
 	 const float mazeGridScale = 0.55f;
@@ -129,8 +140,29 @@ public:
 
 
 
+		for (int i = 0; i < 3; i++) {
+			int textureIndex = 0;
+			gameObject ghostGameObject = {};
+			ghostGameObject.pos = glm::vec3(-1.5f, -0.75f, 1.0f);
+			ghostGameObject.scale = glm::vec3(0.3f, 0.3f, 1.0f);
+			sprite newSprite = {};
+			newSprite.model = glm::scale(glm::mat4(1.0f), ghostGameObject.scale);
+			glm::vec3 newPos = ghostGameObject.pos;
+			newPos.x *= 1 / ghostGameObject.scale.x;
+			newPos.y *= 1 / ghostGameObject.scale.y;
+			newSprite.model = glm::translate(newSprite.model, newPos);
+			newSprite.textureIndex = 1;
+			ghostGameObject.drawObject = newSprite;
+			allGameObjects.push_back(ghostGameObject);
+
+			ghost newGhost = {};
+			newGhost.canMove = false;
+			newGhost.ghostGameObjectIndex = allGameObjects.size() - 1;
+			allGhosts.push_back(newGhost);
+		}
 		
-		int textureIndex = 0;
+		
+
 		
 		gameObject PlayerGameObject = {};
 		PlayerGameObject.pos = glm::vec3(0.2f, 0.0f, 1.0f);
@@ -141,45 +173,17 @@ public:
 		newPos.x *= 1 / PlayerGameObject.scale.x;
 		newPos.y *= 1 / PlayerGameObject.scale.y;
 		newSprite.model = glm::translate(newSprite.model, newPos);
-
-		if (textureIndex == 0) {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 1;
-		}
-		else {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 0;
-		}
+		newSprite.textureIndex = 0;
 		PlayerGameObject.drawObject = newSprite;
-			
+
 		allGameObjects.push_back(PlayerGameObject);
+		playerIndex = allGameObjects.size() - 1;
 		
+	}
 
-		gameObject ghostGameObject = {};
-		ghostGameObject.pos = glm::vec3(-1.5f, -0.75f, 1.0f);
-		ghostGameObject.scale = glm::vec3(0.3f, 0.3f, 1.0f);
-		newSprite = {};
-		newSprite.model = glm::scale(glm::mat4(1.0f), ghostGameObject.scale);
-		newPos = ghostGameObject.pos;
-		newPos.x *= 1 / ghostGameObject.scale.x;
-		newPos.y *= 1 / ghostGameObject.scale.y;
-		newSprite.model = glm::translate(newSprite.model, newPos);
-
-		if (textureIndex == 0) {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 1;
-		}
-		else {
-			newSprite.textureIndex = textureIndex;
-			textureIndex = 0;
-		}
-		ghostGameObject.drawObject = newSprite;
-
-		allGameObjects.push_back(ghostGameObject);
-		
-		player = &allGameObjects[allGameObjects.size() - 2];
-		ghost = &allGameObjects[allGameObjects.size() - 1];
-		
+	gameObject* getPlayerObject() {
+		gameObject* player = &allGameObjects[playerIndex];
+		return player;
 	}
 	
 	bool colliding(gameObject first, gameObject second) {
@@ -221,6 +225,7 @@ public:
 		float ellapsedInSeconds = (ellapsed / pow(10, 6));
 		float velocity = 5.0f;
 		int moveRight = glfwGetKey(window, GLFW_KEY_D);
+		gameObject* player = getPlayerObject();
 		glm::vec3 oldpos = player->pos;
 		if (moveRight != 0) {
 			player->pos.x += velocity * ellapsedInSeconds;
@@ -246,17 +251,16 @@ public:
 				player->pos = oldpos;
 			}	
 		}
-
 		
-
-		if (colliding(*player, *ghost)) {
-			player->pos = oldpos;
+		for (ghost &ghost : allGhosts) {
+			gameObject* object = &allGameObjects[ghost.ghostGameObjectIndex];
+			if (colliding(*player, *object)) {
+				player->pos = oldpos;
+			}
 		}
 
 		for (int coinIndex : coinIndexes) {
 			gameObject *object = &allGameObjects[coinIndex];
-
-
 			if (colliding(*player, *object))
 			{
 				points += 1;
@@ -276,6 +280,7 @@ public:
 	}
 
 	void moveGhostToPosition(gameObject* ghost, glm::vec3 pos, float ellapsed) {
+		gameObject* player = getPlayerObject();
 		float ellapsedInSeconds = (ellapsed / pow(10, 6));
 		glm::vec3 oldpos = ghost->pos;
 		
@@ -293,10 +298,12 @@ public:
 		ghost->drawObject.model = glm::translate(ghost->drawObject.model, newPos);
 	}
 
-	std::vector<glm::vec3> createPath(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos) {
+	std::vector<glm::vec3> createPath(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos, ghost ghostObject){
 		std::vector<glm::vec3> path;
 		gridPos currentPos = endPos;
-		while ((currentPos.x == ghostGridPos.x && currentPos.y == ghostGridPos.y) == false) {
+		bool explored[MAZEHEIGHT][MAZEWIDTH] = {};
+		while ((currentPos.x == ghostObject.ghostGridPos.x && currentPos.y == ghostObject.ghostGridPos.y) == false) {
+			explored[currentPos.y][currentPos.x] = true;
 			glm::vec3 gridCellPosition = allGameObjects[mazeInformation[currentPos.y][currentPos.x].gameObjectIndex].pos;
 			path.push_back(gridCellPosition);
 			currentPos = previus[currentPos.y][currentPos.x];
@@ -307,12 +314,14 @@ public:
 	}
 
 
-	std::vector<glm::vec3> buildGhostPath() {
+	std::vector<glm::vec3> buildGhostPath(gridPos target, ghost &ghostObject) {
 		std::vector<glm::vec3> path;
 		std::queue<gridPos> toExplore;
 		bool explored[MAZEHEIGHT][MAZEWIDTH] = {};
 		gridPos previus[MAZEHEIGHT][MAZEWIDTH] = {};
-		toExplore.push(ghostGridPos);
+		toExplore.push(ghostObject.ghostGridPos);
+
+		bool pathFound = false;
 		while (toExplore.size() > 0) {
 			gridPos currentPos = toExplore.front();
 			toExplore.pop();
@@ -327,7 +336,8 @@ public:
 					
 					previus[newPosition.y][newPosition.x].y = currentPos.y;
 					previus[newPosition.y][newPosition.x].x = currentPos.x;
-					if (newPosition.x == playerGridPos.x && newPosition.y == playerGridPos.y) {
+					if (newPosition.x == target.x && newPosition.y == target.y) {
+						pathFound = true;
 						break;
 					}
 					toExplore.push(newPosition);
@@ -341,7 +351,8 @@ public:
 				{
 					previus[newPosition.y][newPosition.x].y = currentPos.y;
 					previus[newPosition.y][newPosition.x].x = currentPos.x;
-					if (newPosition.x == playerGridPos.x && newPosition.y == playerGridPos.y) {
+					if (newPosition.x == target.x && newPosition.y == target.y) {
+						pathFound = true;
 						break;
 					}
 					toExplore.push(newPosition);
@@ -356,7 +367,8 @@ public:
 				{
 					previus[newPosition.y][newPosition.x].y = currentPos.y;
 					previus[newPosition.y][newPosition.x].x = currentPos.x;
-					if (newPosition.x == playerGridPos.x && newPosition.y == playerGridPos.y) {
+					if (newPosition.x == target.x && newPosition.y == target.y) {
+						pathFound = true;
 						break;
 					}
 					toExplore.push(newPosition);
@@ -370,7 +382,8 @@ public:
 				{
 					previus[newPosition.y][newPosition.x].y = currentPos.y;
 					previus[newPosition.y][newPosition.x].x = currentPos.x;
-					if (newPosition.x == playerGridPos.x && newPosition.y == playerGridPos.y) {
+					if (newPosition.x == target.x && newPosition.y == target.y) {
+						pathFound = true;
 						break;
 					}
 					toExplore.push(newPosition);
@@ -379,12 +392,15 @@ public:
 
 		}
 
-		
-		path = createPath(previus, playerGridPos);
+		if (pathFound)
+		{
+			path = createPath(previus, target, ghostObject);
+		}
 		return path;
 	}
 	
 	void updatePlayerGridPos() {
+		gameObject* player = getPlayerObject();
 		for(int j = 0; j < MAZEHEIGHT; j++ ){
 			int i = 0;
 			for (gridCell &cell : mazeInformation[j]) {
@@ -405,38 +421,107 @@ public:
 		
 	}
 
-	void updateGhostGridPos() {
-		for (int j = 0; j < MAZEHEIGHT; j++) {
-			int i = 0;
-			for (gridCell& cell : mazeInformation[j]) {
-				if (ghost != &allGameObjects[cell.gameObjectIndex] && pointIsInsideGameObject(*ghost, allGameObjects[cell.gameObjectIndex])) {
-					ghostGridPos.y = j;
-					ghostGridPos.x = i;
-					cell.hasGhost = true;
-				}
-				else
-				{
-					cell.hasGhost = false;
+	void updateGhostGridPositions() {
+		for (ghost &ghostObject : allGhosts) {
+			for (int j = 0; j < MAZEHEIGHT; j++) {
+				int i = 0;
+				for (gridCell& cell : mazeInformation[j]) {
+					if (pointIsInsideGameObject(allGameObjects[ghostObject.ghostGameObjectIndex], allGameObjects[cell.gameObjectIndex])) {
+						ghostObject.ghostGridPos.y = j;
+						ghostObject.ghostGridPos.x = i;
+						
+					}
+					else
+					{
+						
 
+					}
+					i++;
 				}
-				i++;
+
 			}
-			
 		}
+		
 
 	}
 
-	void updateGame(GLFWwindow* window, float ellapsed) {
+	void buildAllGhostPaths() {
+
+		allGhosts[0].target = playerGridPos;
+
+		allGhosts[1].target.x = playerGridPos.x;
+		allGhosts[1].target.y = playerGridPos.y + 3;
+
+		allGhosts[2].target.x = playerGridPos.x + 3;
+		allGhosts[2].target.y = playerGridPos.y;
+
+		for (ghost &ghostObject : allGhosts) {
+			
+			ghostObject.ghostPath = buildGhostPath(ghostObject.target, ghostObject);
+			//if a ghost doesnt find a suitable path to target, we try again to find a path straight to the player
+			if (ghostObject.ghostPath.size() < 1) {
+				ghostObject.ghostPath = buildGhostPath(playerGridPos, ghostObject);
+			}
+		}
+	}
+
+	void moveAllGhosts(float ellapsed) {
+		for (ghost &ghostObject : allGhosts) {
+			
+
+
+			if (ghostObject.canMove) {
+				/*
+				* this is for debugging 
+				for (glm::vec3 pos : ghostObject.ghostPath) {
+					gameObject newGameObject = {};
+					newGameObject.pos = pos;
+					newGameObject.scale = glm::vec3(0.1f, 0.1f, 1.0f);
+					sprite newSprite = {};
+					newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
+					glm::vec3 newPos = newGameObject.pos;
+					newPos.x *= 1 / newGameObject.scale.x;
+					newPos.y *= 1 / newGameObject.scale.y;
+					newSprite.model = glm::translate(newSprite.model, newPos);
+					newSprite.textureIndex = 4;
+					newGameObject.drawObject = newSprite;
+
+					allGameObjects.push_back(newGameObject);
+				}
+				*/
+				gameObject* player = getPlayerObject();
+				if (ghostObject.ghostPath.size() > 0) {
+					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], ghostObject.ghostPath.back(), ellapsed);
+					
+				}
+				else {
+					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], player->pos, ellapsed);
+				}
+			}
+
+		}
+	}
+
+	void updateGame(GLFWwindow* window, float ellapsed, float time) {
 		handleInput(window, ellapsed);
 		updatePlayerGridPos();
-		updateGhostGridPos();
-		ghostPath = buildGhostPath();
-		if (ghostPath.size() > 1){
-			moveGhostToPosition(ghost, ghostPath[ghostPath.size() - 1], ellapsed);
+		updateGhostGridPositions();
+		buildAllGhostPaths();
+		moveAllGhosts(ellapsed);
+		
+		if (time > 1.0f) {
+			allGhosts[0].canMove = true;
 		}
-		else {
-			moveGhostToPosition(ghost, player->pos, ellapsed);
+
+		if (time > 3.0f) {
+			allGhosts[1].canMove = true;
 		}
+		if (time > 5.0f) {
+			allGhosts[2].canMove = true;
+		}
+		
+
+		gameObject* player = getPlayerObject();
 		std::cout << "Player position: " << player->pos.x << ", " << player->pos.y << "  |  " << "Points: " << points << "\n";
 		
 		
