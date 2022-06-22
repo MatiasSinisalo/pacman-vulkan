@@ -9,6 +9,9 @@
 #include "globalRenderStructures.h"
 #include <queue>
 
+#define MAZEWIDTH 22
+#define MAZEHEIGHT 27
+
 class Game {
 public: 
 	struct gridCell {
@@ -29,19 +32,45 @@ public:
 	gameObject *player;
 	gridPos playerGridPos;
 	gridPos ghostGridPos;
-	gridCell mazeInformation[10][10] = {};
-
+	gridCell mazeInformation[MAZEHEIGHT][MAZEWIDTH] = {};
+	const char mazeLayout[MAZEHEIGHT][MAZEWIDTH] ={"#####################",
+									"#.........#.........#",
+									"#.###.###.#.###.###.#",
+									"#.###.###.#.###.###.#",
+									"#.###.###.#.###.###.#",
+									"#...................#",
+									"#.###.#.#####.#.###.#",
+									"#.###.#.#####.#.###.#",
+									"#.....#...#...#.....#",
+									"#####.###.#.###.#####",
+									"#####.#.......#.#####",
+									"#####.#.##.##.#.#####",
+									"#####.#.#...#.#.#####",
+									"#.......#####.......#",
+									"#####.#.......#.#####", 
+									"#####.#.#####.#.#####", 
+									"#####.#.#####.#.#####", 
+									"#####.#...#...#.#####", 
+									"#.........#.........#",
+									"#.###..##...##..###.#", 
+									"#...#...........#...#", 
+									"###.#.#.#####.#.#.###", 
+									"###.#.#.#####.#.#.###", 
+									"#.....#...#...#.....#", 
+									"#.#######.#.#######.#", 
+									"#...................#", 
+									"#####################"};
 	gameObject* ghost;
 	 const float mazeStartPosX = -7.0f;
 	 const float mazeStartPosY = -7.0f;
-	 const float mazeGridScale = 1.5f;
-
+	 const float mazeGridScale = 0.55f;
+	 
 
 	void createGameObjects() {
 
 		bool isWall = false;
-		for (int j = 0; j < 10; j++) {
-			for (int i = 0; i < 10; i++) {
+		for (int j = 0; j < MAZEHEIGHT; j++) {
+			for (int i = 0; i < MAZEWIDTH; i++) {
 				gameObject newGameObject = {};
 				newGameObject.pos = glm::vec3(mazeStartPosX + mazeGridScale * i, mazeStartPosY + mazeGridScale * j, 1.0f);
 				newGameObject.scale = glm::vec3(mazeGridScale, mazeGridScale, 1.0f);
@@ -51,7 +80,7 @@ public:
 				newPos.x *= 1 / newGameObject.scale.x;
 				newPos.y *= 1 / newGameObject.scale.y;
 				newSprite.model = glm::translate(newSprite.model, newPos);
-				if ((i == 0 || j == 0 || i == 9 || j == 9) || (i % 2 == 0 && j % 2 == 0)) {
+				if (mazeLayout[j][i] == '#') {
 					newSprite.textureIndex = 2;
 					isWall = true;
 				}
@@ -74,31 +103,52 @@ public:
 	
 		
 		int textureIndex = 0;
-		for (int i = 0; i < 2; i++) {
-			gameObject newGameObject = {};
-			newGameObject.pos = glm::vec3(0.2f + 5 * i, 0.0f, 1.0f);
-			newGameObject.scale = glm::vec3(0.8f, 0.8f, 1.0f);
+		
+		gameObject PlayerGameObject = {};
+		PlayerGameObject.pos = glm::vec3(0.2f, 0.0f, 1.0f);
+		PlayerGameObject.scale = glm::vec3(0.3f, 0.3f, 1.0f);
+		sprite newSprite = {};
+		newSprite.model = glm::scale(glm::mat4(1.0f), PlayerGameObject.scale);
+		glm::vec3 newPos = PlayerGameObject.pos;
+		newPos.x *= 1 / PlayerGameObject.scale.x;
+		newPos.y *= 1 / PlayerGameObject.scale.y;
+		newSprite.model = glm::translate(newSprite.model, newPos);
 
-			sprite newSprite = {};
-			newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
-			glm::vec3 newPos = newGameObject.pos;
-			newPos.x *= 1 / newGameObject.scale.x;
-			newPos.y *= 1 / newGameObject.scale.y;
-			newSprite.model = glm::translate(newSprite.model, newPos);
-
-			if (textureIndex == 0) {
-				newSprite.textureIndex = textureIndex;
-				textureIndex = 1;
-			}
-			else {
-				newSprite.textureIndex = textureIndex;
-				textureIndex = 0;
-			}
-			newGameObject.drawObject = newSprite;
-			
-			allGameObjects.push_back(newGameObject);
-			
+		if (textureIndex == 0) {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 1;
 		}
+		else {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 0;
+		}
+		PlayerGameObject.drawObject = newSprite;
+			
+		allGameObjects.push_back(PlayerGameObject);
+		
+
+		gameObject ghostGameObject = {};
+		ghostGameObject.pos = glm::vec3(-1.5f, -0.75f, 1.0f);
+		ghostGameObject.scale = glm::vec3(0.3f, 0.3f, 1.0f);
+		newSprite = {};
+		newSprite.model = glm::scale(glm::mat4(1.0f), ghostGameObject.scale);
+		newPos = ghostGameObject.pos;
+		newPos.x *= 1 / ghostGameObject.scale.x;
+		newPos.y *= 1 / ghostGameObject.scale.y;
+		newSprite.model = glm::translate(newSprite.model, newPos);
+
+		if (textureIndex == 0) {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 1;
+		}
+		else {
+			newSprite.textureIndex = textureIndex;
+			textureIndex = 0;
+		}
+		ghostGameObject.drawObject = newSprite;
+
+		allGameObjects.push_back(ghostGameObject);
+		
 		player = &allGameObjects[allGameObjects.size() - 2];
 		ghost = &allGameObjects[allGameObjects.size() - 1];
 		
@@ -139,27 +189,28 @@ public:
 
 	}
 
-	void handleInput(GLFWwindow* window, std::vector<gameObject>& gameObjects, float ellapsed) {
+	void handleInput(GLFWwindow* window, float ellapsed) {
 		float ellapsedInSeconds = (ellapsed / pow(10, 6));
+		float velocity = 5.0f;
 		int moveRight = glfwGetKey(window, GLFW_KEY_D);
 		glm::vec3 oldpos = player->pos;
 		if (moveRight != 0) {
-			player->pos.x += 9.0f * ellapsedInSeconds;
+			player->pos.x += velocity * ellapsedInSeconds;
 		}
 
 		int moveLeft = glfwGetKey(window, GLFW_KEY_A);
 		if (moveLeft != 0) {
-			player->pos.x -= 9.0f * ellapsedInSeconds;
+			player->pos.x -= velocity * ellapsedInSeconds;
 		}
 
 		int moveUp = glfwGetKey(window, GLFW_KEY_W);
 		if (moveUp != 0) {
-			player->pos.y -= 9.0f * ellapsedInSeconds;
+			player->pos.y -= velocity * ellapsedInSeconds;
 		}
 
 		int moveDown = glfwGetKey(window, GLFW_KEY_S);
 		if (moveDown != 0) {
-			player->pos.y += 9.0f * ellapsedInSeconds;
+			player->pos.y += velocity * ellapsedInSeconds;
 		}
 
 		for (int wall : mazeWallIndexes) {
@@ -198,7 +249,7 @@ public:
 		ghost->drawObject.model = glm::translate(ghost->drawObject.model, newPos);
 	}
 
-	std::vector<glm::vec3> createPath(gridPos previus[10][10], gridPos endPos) {
+	std::vector<glm::vec3> createPath(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos) {
 		std::vector<glm::vec3> path;
 		gridPos currentPos = endPos;
 		while ((currentPos.x == ghostGridPos.x && currentPos.y == ghostGridPos.y) == false) {
@@ -215,15 +266,15 @@ public:
 	std::vector<glm::vec3> buildGhostPath() {
 		std::vector<glm::vec3> path;
 		std::queue<gridPos> toExplore;
-		bool explored[10][10] = {};
-		gridPos previus[10][10] = {};
+		bool explored[MAZEHEIGHT][MAZEWIDTH] = {};
+		gridPos previus[MAZEHEIGHT][MAZEWIDTH] = {};
 		toExplore.push(ghostGridPos);
 		while (toExplore.size() > 0) {
 			gridPos currentPos = toExplore.front();
 			toExplore.pop();
 			explored[currentPos.y][currentPos.x] = true;
 			
-			if (currentPos.x + 1 < 10) {
+			if (currentPos.x + 1 < MAZEWIDTH) {
 				gridPos newPosition;
 				newPosition.x = currentPos.x + 1;
 				newPosition.y = currentPos.y;
@@ -253,7 +304,7 @@ public:
 				}
 			}
 
-			if (currentPos.y + 1 < 10) {
+			if (currentPos.y + 1 < MAZEHEIGHT) {
 				gridPos newPosition;
 				newPosition.x = currentPos.x;
 				newPosition.y = currentPos.y + 1;
@@ -290,7 +341,7 @@ public:
 	}
 	
 	void updatePlayerGridPos() {
-		for(int j = 0; j < 10; j++ ){
+		for(int j = 0; j < MAZEHEIGHT; j++ ){
 			int i = 0;
 			for (gridCell &cell : mazeInformation[j]) {
 				if (player != &allGameObjects[cell.gameObjectIndex] && pointIsInsideGameObject(*player, allGameObjects[cell.gameObjectIndex])) {
@@ -311,7 +362,7 @@ public:
 	}
 
 	void updateGhostGridPos() {
-		for (int j = 0; j < 10; j++) {
+		for (int j = 0; j < MAZEHEIGHT; j++) {
 			int i = 0;
 			for (gridCell& cell : mazeInformation[j]) {
 				if (ghost != &allGameObjects[cell.gameObjectIndex] && pointIsInsideGameObject(*ghost, allGameObjects[cell.gameObjectIndex])) {
@@ -332,7 +383,7 @@ public:
 	}
 
 	void updateGame(GLFWwindow* window, float ellapsed) {
-		handleInput(window, allGameObjects, ellapsed);
+		handleInput(window, ellapsed);
 		updatePlayerGridPos();
 		updateGhostGridPos();
 		ghostPath = buildGhostPath();
