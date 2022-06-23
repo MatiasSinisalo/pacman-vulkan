@@ -24,12 +24,17 @@ public:
 		int x;
 	};
 
+	struct moveTargetLocation {
+		glm::vec3 targetLocation;
+		bool isValid;
+	};
+
 	struct ghost {
 		int ghostGameObjectIndex;
 		gridPos ghostGridPos;
 		gridPos target;
 		bool canMove;
-		std::vector<glm::vec3> ghostPath;
+		moveTargetLocation nextTarget;
 	};
 	
 	std::vector<gameObject> allGameObjects;
@@ -153,6 +158,7 @@ public:
 
 			ghost newGhost = {};
 			newGhost.canMove = false;
+			
 			newGhost.ghostGameObjectIndex = allGameObjects.size() - 1;
 			allGhosts.push_back(newGhost);
 		}
@@ -217,6 +223,9 @@ public:
 		return false;
 
 	}
+
+
+
 
 	//TODO: move collisions out of input handling!
 	void handleInput(GLFWwindow* window, float ellapsed) {
@@ -296,21 +305,21 @@ public:
 		ghost->drawObject.model = glm::translate(ghost->drawObject.model, newPos);
 	}
 	//TODO: move this to ghost class
-	std::vector<glm::vec3> createPath(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos, ghost ghostObject){
-		std::vector<glm::vec3> path;
+	glm::vec3 getTargetLocation(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos, ghost ghostObject){
+		glm::vec3 pathPoint;
 		gridPos currentPos = endPos;
 		bool explored[MAZEHEIGHT][MAZEWIDTH] = {};
 		while ((currentPos.x == ghostObject.ghostGridPos.x && currentPos.y == ghostObject.ghostGridPos.y) == false) {
 			explored[currentPos.y][currentPos.x] = true;
 			glm::vec3 gridCellPosition = allGameObjects[mazeInformation[currentPos.y][currentPos.x].gameObjectIndex].pos;
-			path.push_back(gridCellPosition);
+			pathPoint = gridCellPosition;
 			currentPos = previus[currentPos.y][currentPos.x];
 		}
-		return path;
+		return pathPoint;
 	}
 	//TODO: move this to ghost class
-	std::vector<glm::vec3> buildGhostPath(gridPos target, ghost &ghostObject) {
-		std::vector<glm::vec3> path;
+	moveTargetLocation getGhostTarget(gridPos target, ghost &ghostObject) {
+		glm::vec3 newTargetLocation;
 		std::queue<gridPos> toExplore;
 		bool explored[MAZEHEIGHT][MAZEWIDTH] = {};
 		gridPos previus[MAZEHEIGHT][MAZEWIDTH] = {};
@@ -387,11 +396,15 @@ public:
 
 		}
 
+		moveTargetLocation newTarget = {};
+		newTarget.isValid = false;
 		if (pathFound)
 		{
-			path = createPath(previus, target, ghostObject);
+			newTarget.isValid = true;
+			newTarget.targetLocation = getTargetLocation(previus, target, ghostObject);
 		}
-		return path;
+
+		return newTarget;
 	}
 	
 	//TODO: update player and ghost gridPos seem to have duplicate code, make these into one function?
@@ -440,19 +453,28 @@ public:
 	void buildAllGhostPaths() {
 
 		allGhosts[0].target = playerGridPos;
-
-		allGhosts[1].target.x = playerGridPos.x;
-		allGhosts[1].target.y = playerGridPos.y + 3;
-
-		allGhosts[2].target.x = playerGridPos.x + 3;
-		allGhosts[2].target.y = playerGridPos.y;
-
+		allGhosts[1].target = playerGridPos;
+		allGhosts[2].target = playerGridPos;
+		
+		if (playerGridPos.y + 3 < MAZEHEIGHT) {
+			if (!mazeInformation[playerGridPos.y + 3][playerGridPos.x].isWall) {
+				allGhosts[1].target.x = playerGridPos.x;
+				allGhosts[1].target.y = playerGridPos.y + 3;
+			}
+		}
+		if (playerGridPos.x + 3 < MAZEWIDTH) {
+			if (!mazeInformation[playerGridPos.y][playerGridPos.x + 3].isWall) {
+				allGhosts[2].target.x = playerGridPos.x + 3;
+				allGhosts[2].target.y = playerGridPos.y;
+			}
+		}
+		
 		for (ghost &ghostObject : allGhosts) {
 			
-			ghostObject.ghostPath = buildGhostPath(ghostObject.target, ghostObject);
+			ghostObject.nextTarget = getGhostTarget(ghostObject.target, ghostObject);
 			//if a ghost doesnt find a suitable path to target, we try again to find a path straight to the player
-			if (ghostObject.ghostPath.size() < 1) {
-				ghostObject.ghostPath = buildGhostPath(playerGridPos, ghostObject);
+			if (!ghostObject.nextTarget.isValid) {
+				ghostObject.nextTarget = getGhostTarget(playerGridPos, ghostObject);
 			}
 		}
 	}
@@ -482,8 +504,8 @@ public:
 				}
 				*/
 				gameObject* player = getPlayerObject();
-				if (ghostObject.ghostPath.size() > 0) {
-					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], ghostObject.ghostPath.back(), ellapsed);
+				if (ghostObject.nextTarget.isValid) {
+					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], ghostObject.nextTarget.targetLocation, ellapsed);
 					
 				}
 				else {
