@@ -628,6 +628,9 @@ VkSampler createSampler(VkDevice logicalDevice) {
 	return textureSampler;
 }
 
+
+
+
 int main() {
 	
 	if (!glfwInit())
@@ -1045,23 +1048,23 @@ int main() {
 
 	Game pacManGame;
 	pacManGame.createGameObjects();
+	
 
 	std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 	std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 	auto ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
+	
 	while (!glfwWindowShouldClose(window))
 	{
-		static auto startTime = std::chrono::high_resolution_clock::now();
+		
 
-		auto currentTime = std::chrono::high_resolution_clock::now();
-		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
+	
 
 
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
-		
-		pacManGame.updateGame(window, ellapsed, time);
+		//std::cout << "ellpased: " << ellapsed << "\n";
+		pacManGame.updateGame(window, ellapsed);
 
 	
 		
