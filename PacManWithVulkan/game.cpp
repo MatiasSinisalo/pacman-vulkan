@@ -33,21 +33,31 @@ public:
 		int ghostGameObjectIndex;
 		gridPos ghostGridPos;
 		gridPos target;
-		bool canMove;
 		moveTargetLocation nextTarget;
+		bool canMove;
+	
+
 	};
 	
 	std::vector<gameObject> allGameObjects;
 	std::vector<ghost> allGhosts;
+	std::vector<gridPos> ghostStartingGridPositions;
 	std::vector<int> coinIndexes;
 	std::vector<int> mazeWallIndexes;
+	int powerUpGameobjectIndex;
+	std::vector<gridPos> powerUpGridPositions;
+	bool powerUpSpawned = false;
+	bool powerUpActive = false;
+	float powerUpActiveTime = 0.0f;
+	
+	float timeEllapsedSincePowerUpPickUp;
 	float time;
 	int playerIndex;
 	gridPos playerGridPos;
 
 	gridCell mazeInformation[MAZEHEIGHT][MAZEWIDTH] = {};
 	const char mazeLayout[MAZEHEIGHT][MAZEWIDTH] ={"#####################",
-									"#.........#.........#",
+									"#X........#........X#",
 									"#.###.###.#.###.###.#",
 									"#.###.###.#.###.###.#",
 									"#.###.###.#.###.###.#",
@@ -71,14 +81,14 @@ public:
 									"###.#.#.#####.#.#.###", 
 									"#.....#...#...#.....#", 
 									"#.#######.#.#######.#", 
-									"#...................#", 
+									"#X.................X#", 
 									"#####################"};
 	
 	 const float mazeStartPosX = -7.0f;
 	 const float mazeStartPosY = -7.0f;
 	 const float mazeGridScale = 0.55f;
 	 int points = 0;
-
+	
 	void createGameObjects() {
 
 		bool isWall = false;
@@ -108,17 +118,51 @@ public:
 					mazeWallIndexes.push_back(allGameObjects.size() - 1);
 					
  				}
+
+				if (mazeLayout[j][i] == ',') {
+					gridPos newPos;
+					newPos.x = i;
+					newPos.y = j;
+					ghostStartingGridPositions.push_back(newPos);
+				}
+
 				mazeInformation[j][i].isWall = isWall;
 				mazeInformation[j][i].gameObjectIndex = allGameObjects.size() - 1;
 				isWall = false;
 				
 			}
 		}
-		//put coins to the structure
-		int test = 0;
+		//Save the locations of X for deciding where to spawn the power pill
 		for (int j = 0; j < MAZEHEIGHT; j++) {
 			for (int i = 0; i < MAZEWIDTH; i++) {
-				
+				if (mazeLayout[j][i] == 'X') {
+					gridPos pos;
+					pos.x = i;
+					pos.y = j;
+					powerUpGridPositions.push_back(pos);
+				}
+			}
+		}
+		//spawn the single power cell off screen for later use
+		{
+			gameObject newGameObject = {};
+			newGameObject.pos.x = 1000.0f;
+			newGameObject.pos.y = 1000.0f;
+			newGameObject.scale = glm::vec3(0.2f, 0.2f, 1.0f);
+			sprite newSprite = {};
+			newSprite.model = glm::scale(glm::mat4(1.0f), newGameObject.scale);
+			glm::vec3 newPos = newGameObject.pos;
+			newPos.x *= 1 / newGameObject.scale.x;
+			newPos.y *= 1 / newGameObject.scale.y;
+			newSprite.model = glm::translate(newSprite.model, newPos);
+			newSprite.textureIndex = 4;
+			newGameObject.drawObject = newSprite;
+			allGameObjects.push_back(newGameObject);
+			powerUpGameobjectIndex = allGameObjects.size() - 1;
+		}
+		for (int j = 0; j < MAZEHEIGHT; j++) {
+			for (int i = 0; i < MAZEWIDTH; i++) {
+
 				if (mazeLayout[j][i] == '.') {
 					gameObject newGameObject = {};
 					newGameObject.pos = allGameObjects[mazeInformation[j][i].gameObjectIndex].pos;
@@ -131,10 +175,10 @@ public:
 					newSprite.model = glm::translate(newSprite.model, newPos);
 					newSprite.textureIndex = 4;
 					newGameObject.drawObject = newSprite;
-					
+
 					allGameObjects.push_back(newGameObject);
-					coinIndexes.push_back(allGameObjects.size()-1);
-					test++;
+					coinIndexes.push_back(allGameObjects.size() - 1);
+					
 				}
 			}
 		}
@@ -158,7 +202,7 @@ public:
 
 			ghost newGhost = {};
 			newGhost.canMove = false;
-			
+		
 			newGhost.ghostGameObjectIndex = allGameObjects.size() - 1;
 			allGhosts.push_back(newGhost);
 		}
@@ -224,9 +268,6 @@ public:
 
 	}
 
-
-
-
 	//TODO: move collisions out of input handling!
 	void handleInput(GLFWwindow* window, float ellapsed) {
 		float ellapsedInSeconds = (ellapsed / pow(10, 6));
@@ -261,9 +302,12 @@ public:
 		
 		for (ghost &ghost : allGhosts) {
 			gameObject* object = &allGameObjects[ghost.ghostGameObjectIndex];
-			if (pointIsInsideGameObject(*player, *object)) {
+			if (pointIsInsideGameObject(*player, *object) && !powerUpActive) {
 				restartGame();
 				return;
+			}
+			if (pointIsInsideGameObject(*player, *object) && powerUpActive) {
+				setGameObjectPosition(object, glm::vec3(-1.5f, -0.75f, 1.0f));
 			}
 		}
 
@@ -273,12 +317,12 @@ public:
 			{
 				points += 1;
 				//this is just a placeholder until gameobject destruction is implemented
-				object->pos = glm::vec3(1000.0f, 1000.0f, 1.0f);
-				object->pos.x *= 1 / object->scale.x;
-				object->pos.y *= 1 / object->scale.y;
-				object->drawObject.model = glm::translate(object->drawObject.model, object->pos);
+				setGameObjectPosition(object, glm::vec3(1000.0f, 1000.0f, 1.0f));
 			}
 		}
+
+		
+
 
 		glm::vec3 newPos = -(oldpos - player->pos);
 		newPos.x *= 1 / player->scale.x;
@@ -288,22 +332,37 @@ public:
 	}
 
 	//TODO: move this to ghost class
-	void moveGhostToPosition(gameObject* ghost, glm::vec3 pos, float ellapsed) {
-		gameObject* player = getPlayerObject();
+	void moveGameObjectToPosition(gameObject* object, glm::vec3 pos, float ellapsed, float speed) {
+		
 		float ellapsedInSeconds = (ellapsed / pow(10, 6));
-		glm::vec3 oldpos = ghost->pos;
+		glm::vec3 oldpos = object->pos;
 		
-		glm::vec3 VectorTowardsPlayer = (pos - ghost->pos);
-		glm::vec3 unitVectorToPlayer = VectorTowardsPlayer / glm::length(VectorTowardsPlayer);
-		ghost->pos = ghost->pos + unitVectorToPlayer * ellapsedInSeconds * 1.5f;
+		glm::vec3 VectorTowardsTarget = (pos - object->pos);
+		glm::vec3 unitVectorToTarget = VectorTowardsTarget / glm::length(VectorTowardsTarget);
+		object->pos = object->pos + unitVectorToTarget * ellapsedInSeconds * speed;
 
 		
 
-		glm::vec3 newPos = -(oldpos - ghost->pos);
-		newPos.x *= 1 / ghost->scale.x;
-		newPos.y *= 1 / ghost->scale.y;
-		ghost->drawObject.model = glm::translate(ghost->drawObject.model, newPos);
+		glm::vec3 moveVector = -(oldpos - object->pos);
+		moveVector.x *= 1 / object->scale.x;
+		moveVector.y *= 1 / object->scale.y;
+		object->drawObject.model = glm::translate(object->drawObject.model, moveVector);
 	}
+
+	void setGameObjectPosition(gameObject* object, glm::vec3 newPos) {
+
+			glm::vec3 oldpos = object->pos;
+			object->pos = newPos;
+
+			glm::vec3 moveVector = -(oldpos - newPos);
+			moveVector.x *= 1 / object->scale.x;
+			moveVector.y *= 1 / object->scale.y;
+			object->drawObject.model = glm::translate(object->drawObject.model, moveVector);
+			
+		
+	}
+
+
 	//TODO: move this to ghost class
 	glm::vec3 getTargetLocation(gridPos previus[MAZEHEIGHT][MAZEWIDTH], gridPos endPos, ghost ghostObject){
 		glm::vec3 pathPoint;
@@ -469,6 +528,14 @@ public:
 			}
 		}
 		
+		if (powerUpActive)
+		{
+			allGhosts[0].target = ghostStartingGridPositions[0];
+			allGhosts[1].target = ghostStartingGridPositions[1];
+			allGhosts[2].target = ghostStartingGridPositions[2];
+		}
+
+
 		for (ghost &ghostObject : allGhosts) {
 			
 			ghostObject.nextTarget = getGhostTarget(ghostObject.target, ghostObject);
@@ -505,11 +572,11 @@ public:
 				*/
 				gameObject* player = getPlayerObject();
 				if (ghostObject.nextTarget.isValid) {
-					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], ghostObject.nextTarget.targetLocation, ellapsed);
+					moveGameObjectToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], ghostObject.nextTarget.targetLocation, ellapsed, 1.5f);
 					
 				}
 				else {
-					moveGhostToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], player->pos, ellapsed);
+					moveGameObjectToPosition(&allGameObjects[ghostObject.ghostGameObjectIndex], player->pos, ellapsed, 1.5f);
 				}
 			}
 
@@ -517,7 +584,8 @@ public:
 	}
 
 	void updateGame(GLFWwindow* window, float ellapsed) {
-		time += (ellapsed / pow(10, 6));
+		float ellapsedInSeconds = (ellapsed / pow(10, 6));
+		time += ellapsedInSeconds;
 		
 		handleInput(window, ellapsed);
 		updatePlayerGridPos();
@@ -538,9 +606,37 @@ public:
 		if (time > 5.0f) {
 			allGhosts[2].canMove = true;
 		}
-		
 
+		if (!powerUpSpawned) {
+			timeEllapsedSincePowerUpPickUp += ellapsedInSeconds;
+
+			if (timeEllapsedSincePowerUpPickUp > 20.0f) {
+				int randomPositionIndex = rand() % powerUpGridPositions.size();
+				int powerUpGridId = mazeInformation[powerUpGridPositions[randomPositionIndex].y][powerUpGridPositions[randomPositionIndex].x].gameObjectIndex;
+				setGameObjectPosition(&allGameObjects[powerUpGameobjectIndex], allGameObjects[powerUpGridId].pos);
+				timeEllapsedSincePowerUpPickUp = 0.0f;
+				powerUpSpawned = true;
+			}
+		}
+		
 		gameObject* player = getPlayerObject();
+		if (colliding(*player, allGameObjects[powerUpGameobjectIndex])) {
+			setGameObjectPosition(&allGameObjects[powerUpGameobjectIndex], glm::vec3(1000.0f, 1000.0f, 1.0f));
+			powerUpSpawned = false;
+			powerUpActive = true;
+		}
+		
+		if (powerUpActive)
+		{
+			powerUpActiveTime += ellapsedInSeconds;
+			if (powerUpActiveTime > 10.0f) {
+				powerUpActiveTime = 0.0f;
+				powerUpActive = false;
+			}
+
+		}
+
+		
 		//std::cout << "Player position: " << player->pos.x << ", " << player->pos.y << "  |  " << "Points: " << points << "\n";
 		
 		
@@ -551,6 +647,10 @@ public:
 		allGhosts.clear();
 		coinIndexes.clear();
 		mazeWallIndexes.clear();
+		powerUpGridPositions.clear();
+		powerUpSpawned = false;
+		powerUpActiveTime = 0.0f;
+		powerUpActive = false;
 		createGameObjects();
 		time = 0.0f;
 	}

@@ -1056,19 +1056,10 @@ int main() {
 	
 	while (!glfwWindowShouldClose(window))
 	{
-		
-
-	
-
-
 		end = std::chrono::steady_clock::now();
 		ellapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count();
 		//std::cout << "ellpased: " << ellapsed << "\n";
 		pacManGame.updateGame(window, ellapsed);
-
-	
-		
-		
 		vkWaitForFences(logicalDevice, 1, &inFlightFences[imageIndex], VK_TRUE, UINT64_MAX);
 		vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX,	imageAcquiredSemaphores[imageIndex], VK_NULL_HANDLE, &imageIndex);
 		renderPassBeginInfo.framebuffer = swapChainFrameBuffers[imageIndex];
