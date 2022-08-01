@@ -24,15 +24,7 @@
 #include "game.cpp"
 
 
-/*
-Sources:
-huge credits go to the totorial from: https://vulkan-tutorial.com/
-Vulkan samples totorial from: https://vulkan.lunarg.com/doc/view/1.2.154.1/windows/tutorial/html/index.html 
-GLFW vulkan guide: https://www.glfw.org/docs/3.3/vulkan_guide.html
-GLFW getiing started: https://www.glfw.org/docs/3.3/quick.html
-c Multiline makros: https://www.geeksforgeeks.org/multiline-macros-in-c/?ref=lbp
-accessing an array of images in fragment stage: http://kylehalladay.com/blog/tutorial/vulkan/2018/01/28/Textue-Arrays-Vulkan.html 
-*/
+
 
 #define CHECK_VK_ERROR(f) {\
 	VkResult result = f;\
