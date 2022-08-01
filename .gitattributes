@@ -1,1 +1,2 @@
-PacManWithVulkan/include/* linguist-vendored
+PacManWithVulkan/include/** linguist-vendored  
+PacManWithVulkan/lib/** linguist-vendored  
